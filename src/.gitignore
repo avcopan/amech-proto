@@ -1,2 +1,7 @@
-*
+/*
 !.gitignore
+!automech/
+!autostore/
+!autopilot/
+!autotools/
+
