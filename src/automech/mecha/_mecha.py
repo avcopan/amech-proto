@@ -133,6 +133,7 @@ def display_reactions(
             automol.amchi.display_reaction(rchis, pchis, stereo=stereo)
 
     if eqs is not None:
+        eqs = list(map(data.reac.standardize_chemkin_equation, eqs))
         rxn_df = rxn_df[rxn_df[Reactions.eq].isin(eqs)]
 
     rxn_df.apply(display_, axis=1)

@@ -263,6 +263,15 @@ def write_chemkin_equation(
     return " = ".join([rcts_str, prds_str])
 
 
+def standardize_chemkin_equation(eq: str) -> str:
+    """Standardize the format of a CHEMKIN equation for string comparison
+
+    :param eq: The reaction CHEMKIN equation
+    :return: The reaction CHEMKIN equation in standard format
+    """
+    return write_chemkin_equation(*read_chemkin_equation(eq))
+
+
 def extract_collider(
     rcts: Tuple[str, ...], prds: Tuple[str, ...]
 ) -> Tuple[Tuple[str, ...], Tuple[str, ...], Optional[str]]:
