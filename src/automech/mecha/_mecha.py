@@ -101,6 +101,7 @@ def display_reactions(
     keys: Tuple[str, ...] = (Reactions.eq,),
     stereo: bool = True,
     eqs: Optional[list] = None,
+    spc_keys: Tuple[str, ...] = (Species.smi,),
 ):
     """Display the reactions in a mechanism
 
@@ -109,6 +110,8 @@ def display_reactions(
     :param keys: Keys of extra columns to print
     :param stereo: Display with stereochemistry?
     :param eqs: Optionally, specify specific equations to visualize
+    :param spc_keys: Optionally, translate the reactant and product names into these
+        species dataframe values
     """
     rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
     spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
@@ -117,6 +120,7 @@ def display_reactions(
     spc_df = schema.validate_species(spc_df)
 
     chi_dct = df_.lookup_dict(spc_df, Species.name, Species.chi)
+    trans_dcts = {k: df_.lookup_dict(spc_df, Species.name, k) for k in spc_keys}
 
     def display_(row):
         # Print the requested information
@@ -127,6 +131,13 @@ def display_reactions(
         # Display the reaction
         eq = row[Reactions.eq]
         rchis, pchis, _ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
+
+        for key, trans_dct in trans_dcts.items():
+            rvals, pvals, _ = data.reac.read_chemkin_equation(eq, trans_dct=trans_dct)
+            print(f"Species `name`=>`{key}` translation")
+            print(f"  reactants = {rvals}")
+            print(f"  products = {pvals}")
+
         if not all(isinstance(n, str) for n in rchis + pchis):
             print(f"Some ChIs missing from species table: {rchis} = {pchis}")
         else:
