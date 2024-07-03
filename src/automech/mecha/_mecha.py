@@ -175,23 +175,25 @@ def classify_reactions(
     # Do the classification with a progress bar, since it may take a while
     chi_dct = df_.lookup_dict(spc_df, Species.name, Species.chi)
 
-    def objs_(eq):
+    def objs_(row):
+        eq = row[Reactions.eq]
         rchis, pchis, _ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
         objs = automol.reac.from_amchis(rchis, pchis, stereo=False)
         return objs if objs else pandas.NA
 
-    rxn_df[Reactions.obj] = rxn_df[Reactions.eq].progress_apply(objs_)
+    rxn_df[Reactions.obj] = rxn_df.progress_apply(objs_, axis=1)
 
     # Separate out the unclassified reactions
     err_df = rxn_df[rxn_df[Reactions.obj].isna()].drop(columns=[Reactions.obj])
     rxn_df = rxn_df[rxn_df[Reactions.obj].notna()].drop(columns=[Reactions.rate])
 
     # Expand reactions with multiple possible mechanisms
-    def amchi_(obj):
+    def amchi_(row):
+        obj = row[Reactions.obj]
         return automol.reac.ts_amchi(obj)
 
     rxn_df = expand_duplicate_reactions(rxn_df)
-    rxn_df[Reactions.chi] = rxn_df[Reactions.obj].progress_apply(amchi_)
+    rxn_df[Reactions.chi] = rxn_df.progress_apply(amchi_, axis=1)
 
     # Expand duplicates among the unclassified reactions again
     err_df = expand_duplicate_reactions(err_df)

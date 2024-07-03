@@ -19,9 +19,7 @@ more-itertools = "*"
 networkx = "*"
 numpy = "*"
 py3dmol = "*"
-pylint = "*"
 pyparsing = "*"
-pytest = ">=8.2.2,<8.3"
 pyyaml = "*"
 qcelemental = "*"
 rdkit = "*"
@@ -30,12 +28,24 @@ xarray = "*"
 # MechAnalyzer dependencies
 click = "*"
 matplotlib = "*"
-# Compiled AutoMech modules
-mess-static = "*"
 pandera = ">=0.19.3,<0.20"
 tqdm = ">=4.66.4,<4.67"
-sphinx = ">=7.3.7,<7.4"
+# Compiled AutoMech modules
+mess-static = "*"
 
 [system-requirements]
 linux="3.10"
 
+# Dev dependencies
+[pypi-dependencies]
+pip = "*"
+pylint = "*"
+pytest = "*"
+pre-commit = "*"
+black = "*"
+ruff = "*"
+mypy = "*"
+sphinx = "*"
+myst-parser = "*"
+sphinx-book-theme = "*"
+sphinx-autodoc-typehints = "*"
