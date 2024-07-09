@@ -1,4 +1,5 @@
 """DataFrame schemas."""
+
 import automol
 import pandas
 import pandera as pa
@@ -10,7 +11,7 @@ tqdm.pandas()
 
 class Species(pa.DataFrameModel):
     name: Series[str] = pa.Field(coerce=True)
-    mult: Series[int] = pa.Field(coerce=True)
+    spin: Series[int] = pa.Field(coerce=True)
     charge: Series[int] = pa.Field(coerce=True, default=0)
     chi: Series[str]
     smi: Series[str] | None
@@ -45,6 +46,10 @@ def validate_species(df: DataFrame, smi: bool = False) -> DataFrame[Species]:
     :param smi: Add in a SMILES column?
     :return: The validated dataframe
     """
+    rename_dct = {"smiles": Species.smi, "inchi": Species.chi}
+    df = df.rename(str.lower, axis="columns")
+    df = df.rename(rename_dct, axis="columns")
+
     assert (
         Species.chi in df or Species.smi in df
     ), f"Must have either 'chi' or 'smi' column: {df}"
@@ -54,6 +59,13 @@ def validate_species(df: DataFrame, smi: bool = False) -> DataFrame[Species]:
 
     if smi and Species.smi not in df:
         df[Species.smi] = df[Species.chi].progress_apply(automol.amchi.smiles)
+
+    if Species.spin not in df:
+        df[Species.spin] = (
+            df["mult"] - 1
+            if "mult" in df
+            else df[Species.chi].apply(automol.amchi.guess_spin)
+        )
 
     return validate(Species, df)
 

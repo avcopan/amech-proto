@@ -21,7 +21,7 @@ SPECIES_ENTRY = (
 SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 
-def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
+def read_species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
     """Extract species information as a dataframe from an RMG species dictionary.
 
     :param inp: An RMG species dictionary, as a file path or string
@@ -48,7 +48,7 @@ def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
     spc_df = pandas.DataFrame(
         {
             schema.Species.name: names,
-            schema.Species.mult: mults,
+            schema.Species.spin: mults,
             schema.Species.chi: chis,
             schema.Species.smi: smis,
         }

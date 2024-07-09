@@ -1,5 +1,5 @@
 """Mechanism I/O in different formats."""
 
-from . import rmg
+from . import chemkin, rmg
 
-__all__ = ["rmg"]
+__all__ = ["chemkin", "rmg"]
