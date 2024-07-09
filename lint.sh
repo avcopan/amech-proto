@@ -6,5 +6,5 @@ FILES=$(git ls-files '*.py')
     cd $SCRIPT_DIR
     pre-commit run black --files ${FILES[@]}
     pre-commit run ruff --files ${FILES[@]}
-    # pre-commit run mypy --files ${FILES[@]}
+    pre-commit run mypy --files ${FILES[@]}
 )

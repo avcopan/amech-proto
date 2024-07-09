@@ -1,4 +1,4 @@
-"""Functions for processing and generating chemical kinetics mechanisms."""
+"""Data processing at the level of whole mechanisms."""
 
 from . import io
 
