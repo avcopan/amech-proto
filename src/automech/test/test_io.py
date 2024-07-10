@@ -7,9 +7,17 @@ import automech
 
 def test__io__chemkin(data_directory_path):
     """Test automech.io.chemkin."""
-    butane_mech = Path(data_directory_path) / "butane.dat"
-    spc_df = automech.io.chemkin.species(butane_mech)
-    rxn_df = automech.io.chemkin.reactions(butane_mech)
-    print(butane_mech)
-    print(rxn_df)
-    print(spc_df)
+    mech_path = Path(data_directory_path) / "butane.dat"
+    mech = automech.io.chemkin.read.mechanism(mech_path)
+    print(mech_path)
+    print(mech)
+
+
+def test__io__rmg(data_directory_path):
+    """Test automech.io.chemkin."""
+    rxn_path = Path(data_directory_path) / "cyclopentene.inp"
+    spc_path = Path(data_directory_path) / "cyclopentene_species.txt"
+    mech = automech.io.rmg.read.mechanism(rxn_path, spc_path)
+    print(rxn_path)
+    print(spc_path)
+    print(mech)

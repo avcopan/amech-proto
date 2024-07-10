@@ -1,5 +1,7 @@
 """DataFrame utilities."""
 
+from pathlib import Path
+
 import pandas
 
 Key = str
@@ -31,6 +33,8 @@ def to_csv(df: pandas.DataFrame, path: str | None):
     :param path: The path to the CSV file
     """
     if path is not None:
+        path: Path = Path(path)
+        path = path if path.suffix == ".csv" else path.with_suffix(".csv")
         df.to_csv(path, index=False)
 
 

@@ -9,6 +9,7 @@ from pandera.typing import DataFrame
 from pyparsing import pyparsing_common as ppc
 
 from ... import data, schema
+from ..._00core import Mechanism
 from ...util import df_
 
 # generic
@@ -34,6 +35,22 @@ SPECIES_NAME = data.reac.SPECIES_NAME
 ARROW = data.reac.ARROW
 FALLOFF = data.reac.FALLOFF
 DUP = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))
+
+
+# mechanism
+def mechanism(
+    inp: str, out: str | None = None, spc_out: str | None = None
+) -> Mechanism:
+    """Extract the mechanism from a CHEMKIN file.
+
+    :param inp: A CHEMKIN mechanism, as a file path or string
+    :param out: Optionally, write the output to this file path (reactions)
+    :param spc_out: Optionally, write the output to this file path (species)
+    :return: The mechanism dataclass
+    """
+    rxn_df = reactions(inp, out=out)
+    spc_df = species(inp, out=spc_out)
+    return Mechanism(rxn_df=rxn_df, spc_df=spc_df)
 
 
 # reactions

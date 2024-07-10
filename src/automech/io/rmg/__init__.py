@@ -1,5 +1,5 @@
 """Functions for reading and writing RMG-formatted files."""
 
-from ._read import read_species
+from . import read
 
-__all__ = ["read_species"]
+__all__ = ["read"]

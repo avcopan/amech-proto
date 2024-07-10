@@ -11,8 +11,10 @@ from pyparsing import pyparsing_common as ppc
 from tqdm.auto import tqdm
 
 from ... import schema
+from ..._00core import Mechanism
 from ...data.reac import SPECIES_NAME
 from ...util import df_
+from ..chemkin import read as chemkin_read
 
 MULTIPLICITY = pp.CaselessLiteral("multiplicity") + ppc.integer("mult")
 SPECIES_ENTRY = (
@@ -21,7 +23,23 @@ SPECIES_ENTRY = (
 SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 
-def read_species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
+def mechanism(
+    inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
+) -> Mechanism:
+    """Extract the mechanism from RMG files.
+
+    :param inp: An RMG mechanism (CHEMKIN format), as a file path or string
+    :param spc_inp: An RMG species dictionary, as a file path or string
+    :param out: Optionally, write the output to this file path (reactions)
+    :param spc_out: Optionally, write the output to this file path (species)
+    :return: The mechanism dataclass
+    """
+    rxn_df = chemkin_read.reactions(inp, out=out)
+    spc_df = species(spc_inp, out=spc_out)
+    return Mechanism(rxn_df=rxn_df, spc_df=spc_df)
+
+
+def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
     """Extract species information as a dataframe from an RMG species dictionary.
 
     :param inp: An RMG species dictionary, as a file path or string
