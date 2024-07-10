@@ -10,8 +10,7 @@ from pandera.typing import DataFrame
 from pyparsing import pyparsing_common as ppc
 from tqdm.auto import tqdm
 
-from ... import schema
-from ..._00core import Mechanism
+from ... import _mech, schema
 from ...data.reac import SPECIES_NAME
 from ...util import df_
 from ..chemkin import read as chemkin_read
@@ -25,7 +24,7 @@ SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 def mechanism(
     inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
-) -> Mechanism:
+) -> _mech.Mechanism:
     """Extract the mechanism from RMG files.
 
     :param inp: An RMG mechanism (CHEMKIN format), as a file path or string
@@ -36,7 +35,7 @@ def mechanism(
     """
     rxn_df = chemkin_read.reactions(inp, out=out)
     spc_df = species(spc_inp, out=spc_out)
-    return Mechanism(rxn_df=rxn_df, spc_df=spc_df)
+    return _mech.from_data(inp=rxn_df, spc_inp=spc_df)
 
 
 def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:

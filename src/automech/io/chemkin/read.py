@@ -8,8 +8,7 @@ import pyparsing as pp
 from pandera.typing import DataFrame
 from pyparsing import pyparsing_common as ppc
 
-from ... import data, schema
-from ..._00core import Mechanism
+from ... import _mech, data, schema
 from ...util import df_
 
 # generic
@@ -40,7 +39,7 @@ DUP = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))
 # mechanism
 def mechanism(
     inp: str, out: str | None = None, spc_out: str | None = None
-) -> Mechanism:
+) -> _mech.Mechanism:
     """Extract the mechanism from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -50,7 +49,7 @@ def mechanism(
     """
     rxn_df = reactions(inp, out=out)
     spc_df = species(inp, out=spc_out)
-    return Mechanism(rxn_df=rxn_df, spc_df=spc_df)
+    return _mech.from_data(inp=rxn_df, spc_inp=spc_df)
 
 
 # reactions
@@ -148,7 +147,6 @@ def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
     parser = pp.Suppress(...) + pp.OneOrMore(pp.Group(entry))
 
     spc_block_str = species_block(inp, comments=True)
-    print(spc_block_str)
 
     spc_dcts = [
         {schema.Species.name: r.get("name"), **dict(r.get("values").asList())}
