@@ -127,7 +127,8 @@ def display(
     mech: Mechanism,
     stereo: bool = True,
     exclude: tuple[str, ...] = ("H*", "OH*", "O2H*", "CH*"),
-    out: str = "net.html",
+    out_name: str = "net.html",
+    out_dir: str = ".automech",
 ) -> None:
     """Display the mechanism as a reaction network.
 
@@ -137,6 +138,9 @@ def display(
         using * for wildcard stoichiometry, defaults to ("H*", "OH*", "O2H*", "CH*")
     :param out: The name of the HTML file to write the network visualization to
     """
+    out_dir: Path = Path(out_dir)
+    out_dir.mkdir(exist_ok=True)
+
     # Read in the mechanism data
     spc_df = species(mech)
     rxn_df = reactions(mech)
@@ -154,8 +158,8 @@ def display(
     spc_df["excluded"] = spc_df.progress_apply(_is_excluded, axis=1)
     excl_names = list(spc_df[spc_df["excluded"]][Species.name])
 
-    image_dir_path = Path("img")
-    image_dir_path.mkdir(exist_ok=True)
+    img_dir = Path("img")
+    (out_dir / img_dir).mkdir(exist_ok=True)
 
     def _create_image(row: Series):
         chi = row[Species.chi]
@@ -163,8 +167,8 @@ def display(
         chk = automol.amchi.amchi_key(chi)
         svg_str = automol.graph.svg_string(gra, image_size=100)
 
-        path = image_dir_path / f"{chk}.svg"
-        with open(path, mode="w") as file:
+        path = img_dir / f"{chk}.svg"
+        with open(out_dir / path, mode="w") as file:
             file.write(svg_str)
 
         return str(path)
@@ -189,7 +193,7 @@ def display(
 
     spc_df.progress_apply(_add_node, axis=1)
     rxn_df.progress_apply(_add_edge, axis=1)
-    net.write_html(out, open_browser=True)
+    net.write_html(str(out_dir / out_name), open_browser=True)
 
 
 # def display_reactions(
