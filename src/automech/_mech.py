@@ -154,7 +154,7 @@ def display(
     spc_df["excluded"] = spc_df.progress_apply(_is_excluded, axis=1)
     excl_names = list(spc_df[spc_df["excluded"]][Species.name])
 
-    image_dir_path = Path("images")
+    image_dir_path = Path("img")
     image_dir_path.mkdir(exist_ok=True)
 
     def _create_image(row: Series):
@@ -189,7 +189,7 @@ def display(
 
     spc_df.progress_apply(_add_node, axis=1)
     rxn_df.progress_apply(_add_edge, axis=1)
-    ipd.display(net.show(out))
+    net.write_html(out, open_browser=True)
 
 
 # def display_reactions(
