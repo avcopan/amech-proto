@@ -71,7 +71,7 @@ def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
         }
     )
 
-    spc_df = schema.validate_species(spc_df)
+    spc_df = schema.species_table(spc_df)
     df_.to_csv(spc_df, out)
 
     return spc_df

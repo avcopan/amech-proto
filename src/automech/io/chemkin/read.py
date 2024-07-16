@@ -3,12 +3,12 @@
 import os
 import re
 
-import pandas
+import polars
 import pyparsing as pp
-from pandera.typing import DataFrame
 from pyparsing import pyparsing_common as ppc
 
 from ... import _mech, data, schema
+from ...schema import Reaction, ReactionRate
 from ...util import df_
 
 # generic
@@ -53,7 +53,7 @@ def mechanism(
 
 
 # reactions
-def reactions(inp: str, out: str | None = None) -> DataFrame[schema.Reactions]:
+def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     """Extract reaction information as a dataframe from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -94,11 +94,13 @@ def reactions(inp: str, out: str | None = None) -> DataFrame[schema.Reactions]:
         names.append(data.reac.equation(rxn))
         rates.append(data.reac.rate(rxn))
 
-    rxn_df = pandas.DataFrame(
-        {schema.Reactions.eq: names, schema.Reactions.rate: rates}
+    rxn_df = polars.DataFrame(
+        data={Reaction.eq: names, ReactionRate.rate: rates},
+        schema=schema.types(Reaction, ReactionRate),
     )
 
-    rxn_df = schema.validate_reactions(rxn_df)
+    print(rxn_df)
+    rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
     df_.to_csv(rxn_df, out)
 
     return rxn_df
@@ -132,7 +134,7 @@ def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
 
 
 # species
-def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
+def species(inp: str, out: str | None = None) -> polars.DataFrame:
     """Get the list of species, along with their comments.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -152,18 +154,12 @@ def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
         {schema.Species.name: r.get("name"), **dict(r.get("values").asList())}
         for r in parser.parseString(spc_block_str)
     ]
-    spc_df = pandas.DataFrame(spc_dcts)
+    spc_df = polars.DataFrame(spc_dcts)
 
-    spc_df = schema.validate_species(spc_df)
+    spc_df = schema.species_table(spc_df)
     df_.to_csv(spc_df, out)
 
     return spc_df
-
-
-#     spc_names, spc_comments = zip(
-#         *parser.parseString(spc_block_str).asList(), strict=True
-#     )
-#     return spc_names, spc_comments
 
 
 def species_block(inp: str, comments: bool = True) -> str:

@@ -1,45 +1,91 @@
 """DataFrame utilities."""
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
-import pandas
+import narwhals
+import polars
+from narwhals.typing import FrameT
+from tqdm.auto import tqdm
 
 Key = str
-Keys = tuple[str, ...]
+Keys = Sequence[str]
 Key_ = Key | Keys
 Value = object
-Values = tuple[object, ...]
+Values = Sequence[object]
 Value_ = Value | Values
 
 
-def from_csv(path: str) -> pandas.DataFrame:
+def from_csv(path: str) -> polars.DataFrame:
     """Read a dataframe from a CSV file.
 
     :param path: The path to the CSV file
     :return: The dataframe
     """
-    try:
-        df = pandas.read_csv(path)
-    except pandas.errors.ParserError:
-        df = pandas.read_csv(path, quotechar="'")
+    df = polars.read_csv(path)
+    # try:
+    #     df = polars.read_csv(path)
+    # except pandas.errors.ParserError:
+    #     df = polars.read_csv(path, quote_char="'")
     return df
 
 
-def to_csv(df: pandas.DataFrame, path: str | None):
+def to_csv(
+    df: polars.DataFrame, path: str | None, quote_char: str | None = None
+) -> None:
     """Write a dataframe to a CSV file.
 
     If `path` is `None`, this function does nothing
 
+    :param df: The dataframe
     :param path: The path to the CSV file
+    :param quote_char: Optionally, override the default quote character
     """
+    kwargs = {} if quote_char is None else {"quote_char": quote_char}
     if path is not None:
         path: Path = Path(path)
         path = path if path.suffix == ".csv" else path.with_suffix(".csv")
-        df.to_csv(path, index=False)
+        df.write_csv(path, **kwargs)
 
 
+@narwhals.narwhalify
+def map_(
+    df: FrameT,
+    in_: Key_,
+    out: Key,
+    func_: Callable,
+    dtype: polars.DataType | None = None,
+    bar: bool = True,
+) -> FrameT:
+    """Map columns from a dataframe onto a new column.
+
+    :param df: The dataframe
+    :param in_: The input key or keys
+    :param out: The output key
+    :param func_: The mapping function
+    :param dtype: The data type of the output
+    :param bar: Include a progress bar?
+    :return: The resulting dataframe
+    """
+    in_ = (in_,) if isinstance(in_, str) else tuple(in_)
+
+    def row_func_(row: dict[str, object]):
+        return func_(*map(row.get, in_))
+
+    row_iter = df.iter_rows(named=True)
+    if bar:
+        row_iter = tqdm(row_iter, total=df.shape[0])
+
+    col = polars.Series(name=out, values=[row_func_(r) for r in row_iter])
+    if dtype is not None:
+        col = col.cast(dtype)
+
+    return df.with_columns(narwhals.from_native(col, series_only=True))
+
+
+@narwhals.narwhalify
 def lookup_dict(
-    df: pandas.DataFrame, in_: Key_ | None = None, out_: Key_ | None = None
+    df: FrameT, in_: Key_ | None = None, out_: Key_ | None = None
 ) -> dict[Value_, Value_]:
     """Form a lookup dictionary mapping one column onto another in a dataframe.
 
@@ -50,25 +96,20 @@ def lookup_dict(
     :param out_: The output key or keys; if `None` the index is used
     :return: The dictionary mapping input values to output values
     """
+    cols = df.columns
 
     def check_(key_):
         return (
             True
             if key_ is None
-            else key_ in df
-            if isinstance(key_, str)
-            else all(k in df for k in key_)
+            else key_ in cols if isinstance(key_, str) else all(k in cols for k in key_)
         )
 
     def values_(key_):
         return (
-            df.index
+            range(df.shape[0])
             if key_ is None
-            else (
-                df[key_]
-                if isinstance(key_, str)
-                else zip(*(df[k] for k in key_), strict=True)
-            )
+            else (df[key_] if isinstance(key_, str) else df[list(key_)].iter_rows())
         )
 
     assert check_(in_), f"{in_} not in {df}"

@@ -131,6 +131,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/mypy_extensions-1.0.0-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mysql-common-8.3.0-hf1915f5_4.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mysql-libs-8.3.0-hca2cd23_4.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/narwhals-1.1.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ncurses-6.5-h59595ed_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/networkx-3.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/nspr-4.35-h27087fc_0.conda
@@ -150,6 +151,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/pint-0.24.1-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pixman-0.43.2-h59595ed_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ply-3.11-pyhd8ed1ab_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-0.20.31-py312hd26010a_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prompt-toolkit-3.0.47-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-h36c2ea0_1001.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/noarch/ptyprocess-0.7.0-pyhd3deb0d_0.tar.bz2
@@ -417,6 +419,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mysql-common-8.3.0-hf1915f5_4.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/mysql-libs-8.3.0-hca2cd23_4.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/myst-parser-3.0.1-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/narwhals-1.1.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/nbclient-0.10.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/nbconvert-7.16.4-hd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/nbconvert-core-7.16.4-pyhd8ed1ab_1.conda
@@ -453,6 +456,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/platformdirs-4.2.2-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pluggy-1.5.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ply-3.11-pyhd8ed1ab_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-0.20.31-py312hd26010a_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pre-commit-3.7.1-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prometheus_client-0.20.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prompt-toolkit-3.0.47-pyha770c72_0.conda
@@ -656,7 +660,7 @@ packages:
   name: amech-proto
   version: 0.1.0
   path: .
-  sha256: deecb43c3baaa4ec8194c5f3d66129335ec1a15e4f429be039cce87a51ce78f6
+  sha256: fb7c116adaf515e0542b7fea6e223fd435846e9f3f3abb7652987e8748ffcc87
   requires_dist:
   - pyvis
   requires_python: '>=3.10'
@@ -4033,6 +4037,23 @@ packages:
   size: 72235
   timestamp: 1714413912964
 - kind: conda
+  name: narwhals
+  version: 1.1.0
+  build: pyhd8ed1ab_0
+  subdir: noarch
+  noarch: python
+  url: https://conda.anaconda.org/conda-forge/noarch/narwhals-1.1.0-pyhd8ed1ab_0.conda
+  sha256: 4920210064f0b797992df871b4a1d0df6861b9344c6eeff1ab75f0bd8ac8b29f
+  md5: 0a4e9a371e70e4925923f45792241fab
+  depends:
+  - python >=3.8
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/narwhals
+  size: 67899
+  timestamp: 1721077805742
+- kind: conda
   name: nbclient
   version: 0.10.0
   build: pyhd8ed1ab_0
@@ -4717,6 +4738,27 @@ packages:
   - pkg:pypi/ply
   size: 49196
   timestamp: 1712243121626
+- kind: conda
+  name: polars
+  version: 0.20.31
+  build: py312hd26010a_1
+  build_number: 1
+  subdir: linux-64
+  url: https://conda.anaconda.org/conda-forge/linux-64/polars-0.20.31-py312hd26010a_1.conda
+  sha256: b72fbb124c666cc7ddbf5ac38193310b19b5b88d4dc24c8d7ca88e86d60cd944
+  md5: c444edacfe51f9034ee19fa227939d4b
+  depends:
+  - libgcc-ng >=12
+  - numpy >=1.16.0
+  - packaging
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  license: MIT
+  license_family: MIT
+  purls:
+  - pkg:pypi/polars
+  size: 22016623
+  timestamp: 1719840857908
 - kind: conda
   name: pre-commit
   version: 3.7.1

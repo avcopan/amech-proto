@@ -21,3 +21,7 @@ def test__io__rmg(data_directory_path):
     print(rxn_path)
     print(spc_path)
     print(mech)
+
+
+if __name__ == "__main__":
+    test__io__chemkin("/home/avcopan/code/amech-proto/src/automech/test/data")

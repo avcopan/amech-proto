@@ -1,7 +1,16 @@
 """Data processing at the level of whole mechanisms."""
 
 from . import data, io, util
-from ._mech import Mechanism, display, from_data, from_smiles, reactions, species
+from ._mech import (
+    Mechanism,
+    add_species,
+    display,
+    from_data,
+    from_smiles,
+    grow,
+    reactions,
+    species,
+)
 
 __all__ = [
     # types
@@ -9,7 +18,9 @@ __all__ = [
     # functions
     "from_data",
     "from_smiles",
+    "add_species",
     "display",
+    "grow",
     "reactions",
     "species",
     # modules

@@ -1,95 +1,120 @@
 """DataFrame schemas."""
 
+from collections.abc import Sequence
+
 import automol
-import pandas
-import pandera as pa
-from pandera.typing import DataFrame, Series
-from tqdm.auto import tqdm
+import pandera.polars as pa
+import polars
+from pandera.typing.polars import DataFrame
 
-tqdm.pandas()
+from automech.util import df_
 
 
+# Core table schemas
 class Species(pa.DataFrameModel):
-    name: Series[str] = pa.Field(coerce=True)
-    spin: Series[int] = pa.Field(coerce=True)
-    charge: Series[int] = pa.Field(coerce=True, default=0)
-    chi: Series[str]
-    smi: Series[str] | None
-    # Original column names (before stereoexpansion)
-    orig_name: Series[str] | None
-    orig_chi: Series[str] | None
-    orig_smi: Series[str] | None
+    """Core species table."""
+
+    name: str
+    spin: int
+    charge: int
+    chi: str
+    smi: str
 
 
-S_CURR_COLS = (Species.name, Species.chi, Species.smi)
-S_ORIG_COLS = (Species.orig_name, Species.orig_chi, Species.orig_smi)
+SpeciesDataFrame = DataFrame[Species]
 
 
-class Reactions(pa.DataFrameModel):
-    eq: Series[str] = pa.Field(coerce=True)
-    rate: Series[object] | None
-    chi: Series[str] | None
-    obj: Series[object] | None
-    orig_eq: Series[str] | None
-    orig_chi: Series[str] | None
+class Reaction(pa.DataFrameModel):
+    """Core reaction table."""
+
+    eq: str
 
 
-R_CURR_COLS = (Reactions.eq, Reactions.chi)
-R_ORIG_COLS = (Reactions.orig_eq, Reactions.orig_chi)
-DUP_DIFF_COLS = (Reactions.rate, Reactions.chi, Reactions.obj)
+ReactionDataFrame = DataFrame[Species]
 
 
-def validate_species(df: DataFrame, smi: bool = False) -> DataFrame[Species]:
+# Extended tables
+class ReactionRate(Reaction):
+    """Reaction table with rate."""
+
+    rate: object
+
+
+# class SpeciesExp(Species):
+#     """Stereo-expanded species table."""
+
+#     orig_name: str
+#     orig_chi: str
+#     orig_smi: str
+
+
+def types(*models: pa.DataFrameModel) -> dict[str, type]:
+    """Get a dictionary mapping column names to type names.
+
+    :param *models: The models to get the schema for
+    :return: The schema, as a mapping of column names onto types
+    """
+    type_dct = {}
+    for model in models:
+        type_dct.update({k: v.dtype.type for k, v in model.to_schema().columns.items()})
+    return type_dct
+
+
+def species_table(
+    df: polars.DataFrame, models: Sequence[pa.DataFrameModel] = (Species,)
+) -> SpeciesDataFrame:
     """Validate a species data frame.
 
     :param df: The dataframe
     :param smi: Add in a SMILES column?
+    :param models: DataFrame models to validate against
     :return: The validated dataframe
     """
+    dt_dct = types(Species)
     rename_dct = {"smiles": Species.smi, "inchi": Species.chi}
-    df = df.rename(str.lower, axis="columns")
-    df = df.rename(rename_dct, axis="columns")
+    df = df.rename({k: str.lower(k) for k in df.columns})
+    df = df.rename({k: v for k, v in rename_dct.items() if k in df})
 
     assert (
         Species.chi in df or Species.smi in df
     ), f"Must have either 'chi' or 'smi' column: {df}"
 
     if Species.chi not in df:
-        df[Species.chi] = df[Species.smi].progress_apply(automol.smiles.chi)
+        df = df_.map_(df, Species.smi, Species.chi, automol.smiles.amchi)
 
-    if smi and Species.smi not in df:
-        df[Species.smi] = df[Species.chi].progress_apply(automol.amchi.smiles)
+    if Species.smi not in df:
+        df = df_.map_(df, Species.chi, Species.smi, automol.amchi.smiles)
 
     if Species.spin not in df:
-        df[Species.spin] = (
-            df["mult"] - 1
-            if "mult" in df
-            else df[Species.chi].apply(automol.amchi.guess_spin)
-        )
+        dt = dt_dct[Species.spin]
+        if "mult" in df:
+            df = df.with_columns((df["mult"] - 1).alias(Species.spin).cast(dt))
+        else:
+            df = df_.map_(
+                df, Species.chi, Species.spin, automol.amchi.guess_spin, dtype=dt
+            )
 
-    return validate(Species, df)
+    if Species.charge not in df:
+        dt = dt_dct[Species.charge]
+        df = df.with_columns(polars.lit(0).alias(Species.charge).cast(dt))
+
+    print(df)
+    for model in models:
+        df = df.pipe(model.validate)
+    return df
 
 
-def validate_reactions(df: DataFrame) -> DataFrame[Species]:
+def reaction_table(
+    df: polars.DataFrame, models: Sequence[pa.DataFrameModel] = (Reaction,)
+) -> ReactionDataFrame:
     """Validate a reactions data frame.
 
     :param df: The dataframe
     :return: The validated dataframe
     """
-    return validate(Reactions, df)
-
-
-def validate(model: pa.DataFrameModel, df: pandas.DataFrame) -> pandas.DataFrame:
-    """Validate a pandas dataframe based on a model.
-
-    :param model: The model
-    :param df: The dataframe
-    :return: The validated dataframe
-    """
-    schema = model.to_schema()
-    schema.add_missing_columns = True
-    schema.strict = False
-    df = schema.validate(df)
-    cols = [c for c in schema.columns.keys() if c in df]
-    cols.extend(df.columns.difference(cols))
-    return df[cols]
+    df = df.rename({k: str.lower(k) for k in df.columns})
+    print("validating...")
+    for model in models:
+        print(type(df))
+        df = model.validate(df)
+    return df

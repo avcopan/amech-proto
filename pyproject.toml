@@ -35,9 +35,11 @@ scipy = ">=1.9.0"
 xarray = ">=2022.6.0"	# AutoMech dependencies
 click = "*"
 matplotlib = ">=3.6.0"
-pandera = "*"
 pandas = ">=1.5.0"
 tqdm = "*"
+narwhals = ">=1.1.0,<1.2"
+pandera = ">=0.20.1,<0.21"
+polars = ">=0.19,<1.0"
 
 [tool.pixi.feature.test.dependencies]
 pip = "*"
