@@ -1,4 +1,5 @@
 """Test automech functions."""
+
 import automech
 
 
@@ -19,3 +20,7 @@ def test__from_smiles():
     # Example 3 (empty mechanism)
     mech = automech.from_smiles([], rxn_smis=[])
     print(mech)
+
+
+if __name__ == "__main__":
+    test__from_smiles()

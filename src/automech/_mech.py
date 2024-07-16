@@ -33,22 +33,18 @@ class Mechanism:
 
 
 # constructors
-def from_data(inp, spc_inp, validate: bool = True, smi: bool = False) -> Mechanism:
+def from_data(inp, spc_inp) -> Mechanism:
     """Contruct a mechanism object from data.
 
     :param inp: A reactions table, as a CSV file path or dataframe
     :param spc_inp: A species table, as a CSV file path or dataframe
     :param validate: Validate the data?
-    :param smi: Add SMILES column, if missing? (Takes time)
     :return: The mechanism object
     """
     rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
     spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
-
-    if validate:
-        rxn_df = schema.reaction_table(rxn_df)
-        spc_df = schema.species_table(spc_df)
-
+    rxn_df = schema.reaction_table(rxn_df)
+    spc_df = schema.species_table(spc_df)
     return Mechanism(reactions=rxn_df, species=spc_df)
 
 
@@ -82,10 +78,8 @@ def add_species(
             Species.charge: [0 if charge is None else charge],
         }
     )
-    print(row)
 
     spc_df = pandas.concat([mech.species, row], ignore_index=True)
-    print(spc_df)
     return from_data(mech.reactions, spc_df)
 
 
@@ -113,21 +107,15 @@ def from_smiles(
 
     # Build the species dataframe
     chis = list(map(automol.smiles.amchi, smis))
-    ids = list(zip(smis, chis, strict=True))
-    spc_df = pandas.DataFrame(
-        data={
-            Species.name: [
-                name_dct[s] if s in name_dct else automol.amchi.chemkin_name(c)
-                for s, c in ids
-            ],
-            Species.spin: [
-                spin_dct[s] if s in spin_dct else automol.amchi.guess_spin(c)
-                for s, c in ids
-            ],
-            Species.charge: [charge_dct[s] if s in charge_dct else 0 for s, c in ids],
-            Species.smi: smis,
-            Species.chi: chis,
-        }
+    chi_dct = dict(zip(smis, chis, strict=True))
+    name_dct = {chi_dct[k]: v for k, v in name_dct.items() if k in smis}
+    spin_dct = {chi_dct[k]: v for k, v in spin_dct.items() if k in smis}
+    charge_dct = {chi_dct[k]: v for k, v in charge_dct.items() if k in smis}
+    data_dct = {Species.smi: smis, Species.chi: chis}
+    dt = schema.types([Species], data_dct.keys())
+    spc_df = polars.DataFrame(data=data_dct, schema=dt)
+    spc_df = schema.species_table(
+        spc_df, name_dct=name_dct, spin_dct=spin_dct, charge_dct=charge_dct
     )
 
     # Build the reactions dataframe
@@ -137,8 +125,12 @@ def from_smiles(
         data.reac.write_chemkin_equation(rs, ps, trans_dct=trans_dct)
         for rs, ps in rxn_smis_lst
     ]
-    rxn_df = pandas.DataFrame(data={Reaction.eq: eqs})
-    return from_data(rxn_df, spc_df, validate=True)
+    data_dct = {Reaction.eq: eqs}
+    dt = schema.types([Reaction], data_dct.keys())
+    rxn_df = polars.DataFrame(data=data_dct, schema=dt)
+    print(eqs)
+    print(rxn_df)
+    return from_data(rxn_df, spc_df)
 
 
 # getters

@@ -25,3 +25,4 @@ def test__io__rmg(data_directory_path):
 
 if __name__ == "__main__":
     test__io__chemkin("/home/avcopan/code/amech-proto/src/automech/test/data")
+    test__io__rmg("/home/avcopan/code/amech-proto/src/automech/test/data")

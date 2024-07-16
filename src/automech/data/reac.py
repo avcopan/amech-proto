@@ -252,9 +252,9 @@ def write_chemkin_equation(
     rcts_ = list(map(trans_, rcts))
     prds_ = list(map(trans_, prds))
 
-    if not all(isinstance(n, str) for n in rcts_ + prds_):
-        print(f"Some species in {rcts}={prds} have no translation:\n{trans_dct}")
-        return None
+    assert all(
+        isinstance(n, str) for n in rcts_ + prds_
+    ), f"Some species in {rcts}={prds} have no translation:\n{trans_dct}"
 
     rcts_str = " + ".join(rcts_)
     prds_str = " + ".join(prds_)

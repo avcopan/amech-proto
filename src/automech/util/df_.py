@@ -54,6 +54,7 @@ def map_(
     in_: Key_,
     out: Key,
     func_: Callable,
+    dct: dict[object, object] | None = None,
     dtype: polars.DataType | None = None,
     bar: bool = True,
 ) -> FrameT:
@@ -63,14 +64,18 @@ def map_(
     :param in_: The input key or keys
     :param out: The output key
     :param func_: The mapping function
+    :param dct: A lookup dictionary; If the arguments are a key in this dictionary, its
+        value will be returned in place of the function value
     :param dtype: The data type of the output
     :param bar: Include a progress bar?
     :return: The resulting dataframe
     """
+    dct = {} if dct is None else dct
     in_ = (in_,) if isinstance(in_, str) else tuple(in_)
 
     def row_func_(row: dict[str, object]):
-        return func_(*map(row.get, in_))
+        args = tuple(map(row.get, in_))
+        return dct[args] if args in dct else func_(*args)
 
     row_iter = df.iter_rows(named=True)
     if bar:

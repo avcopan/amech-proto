@@ -3,15 +3,17 @@
 import os
 
 import automol
-import pandas
+import polars
 import pyparsing as pp
 from automol.graph import RMG_ADJACENCY_LIST
-from pandera.typing import DataFrame
 from pyparsing import pyparsing_common as ppc
 from tqdm.auto import tqdm
 
-from ... import _mech, schema
+from ... import schema
+from ..._mech import Mechanism
+from ..._mech import from_data as mechanism_from_data
 from ...data.reac import SPECIES_NAME
+from ...schema import Species, SpeciesDataFrame
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -24,7 +26,7 @@ SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 def mechanism(
     inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
-) -> _mech.Mechanism:
+) -> Mechanism:
     """Extract the mechanism from RMG files.
 
     :param inp: An RMG mechanism (CHEMKIN format), as a file path or string
@@ -35,10 +37,10 @@ def mechanism(
     """
     rxn_df = chemkin_read.reactions(inp, out=out)
     spc_df = species(spc_inp, out=spc_out)
-    return _mech.from_data(inp=rxn_df, spc_inp=spc_df)
+    return mechanism_from_data(inp=rxn_df, spc_inp=spc_df)
 
 
-def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
+def species(inp: str, out: str | None = None) -> SpeciesDataFrame:
     """Extract species information as a dataframe from an RMG species dictionary.
 
     :param inp: An RMG species dictionary, as a file path or string
@@ -62,13 +64,14 @@ def species(inp: str, out: str | None = None) -> DataFrame[schema.Species]:
         chis.append(automol.graph.inchi(gra))
         smis.append(automol.graph.smiles(gra))
 
-    spc_df = pandas.DataFrame(
-        {
-            schema.Species.name: names,
-            schema.Species.spin: mults,
-            schema.Species.chi: chis,
-            schema.Species.smi: smis,
-        }
+    data_dct = {
+        Species.name: names,
+        Species.spin: mults,
+        Species.chi: chis,
+        Species.smi: smis,
+    }
+    spc_df = polars.DataFrame(
+        data=data_dct, schema=schema.types([Species], data_dct.keys())
     )
 
     spc_df = schema.species_table(spc_df)

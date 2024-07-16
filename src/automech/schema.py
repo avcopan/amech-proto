@@ -48,29 +48,43 @@ class ReactionRate(Reaction):
 #     orig_smi: str
 
 
-def types(*models: pa.DataFrameModel) -> dict[str, type]:
+def types(
+    models: Sequence[pa.DataFrameModel], keys: Sequence[str] | None = None
+) -> dict[str, type]:
     """Get a dictionary mapping column names to type names.
 
     :param *models: The models to get the schema for
     :return: The schema, as a mapping of column names onto types
     """
+    keys = None if keys is None else list(keys)
+
     type_dct = {}
     for model in models:
         type_dct.update({k: v.dtype.type for k, v in model.to_schema().columns.items()})
+
+    if keys is not None:
+        type_dct = {k: v for k, v in type_dct.items() if k in keys}
+
     return type_dct
 
 
 def species_table(
-    df: polars.DataFrame, models: Sequence[pa.DataFrameModel] = (Species,)
+    df: polars.DataFrame,
+    models: Sequence[pa.DataFrameModel] = (Species,),
+    name_dct: dict[str, str] | None = None,
+    spin_dct: dict[str, int] | None = None,
+    charge_dct: dict[str, int] | None = None,
 ) -> SpeciesDataFrame:
     """Validate a species data frame.
 
     :param df: The dataframe
-    :param smi: Add in a SMILES column?
     :param models: DataFrame models to validate against
+    :param name_dct: If generating names, specify some names by ChI
+    :param spin_dct: If generating spins, specify some spins by ChI
+    :param charge_dct: If generating charges, specify some charges by ChI
     :return: The validated dataframe
     """
-    dt_dct = types(Species)
+    dt_dct = types([Species])
     rename_dct = {"smiles": Species.smi, "inchi": Species.chi}
     df = df.rename({k: str.lower(k) for k in df.columns})
     df = df.rename({k: v for k, v in rename_dct.items() if k in df})
@@ -85,22 +99,39 @@ def species_table(
     if Species.smi not in df:
         df = df_.map_(df, Species.chi, Species.smi, automol.amchi.smiles)
 
+    if Species.name not in df:
+        dt = dt_dct[Species.name]
+        df = df_.map_(
+            df,
+            Species.chi,
+            Species.name,
+            automol.amchi.chemkin_name,
+            dtype=dt,
+            dct=name_dct,
+        )
+
     if Species.spin not in df:
         dt = dt_dct[Species.spin]
         if "mult" in df:
             df = df.with_columns((df["mult"] - 1).alias(Species.spin).cast(dt))
         else:
             df = df_.map_(
-                df, Species.chi, Species.spin, automol.amchi.guess_spin, dtype=dt
+                df,
+                Species.chi,
+                Species.spin,
+                automol.amchi.guess_spin,
+                dtype=dt,
+                dct=spin_dct,
             )
 
     if Species.charge not in df:
         dt = dt_dct[Species.charge]
-        df = df.with_columns(polars.lit(0).alias(Species.charge).cast(dt))
+        df = df_.map_(
+            df, Species.chi, Species.charge, lambda _: 0, dtype=dt, dct=charge_dct
+        )
 
-    print(df)
     for model in models:
-        df = df.pipe(model.validate)
+        df = model.validate(df)
     return df
 
 
@@ -113,8 +144,7 @@ def reaction_table(
     :return: The validated dataframe
     """
     df = df.rename({k: str.lower(k) for k in df.columns})
-    print("validating...")
+
     for model in models:
-        print(type(df))
         df = model.validate(df)
     return df

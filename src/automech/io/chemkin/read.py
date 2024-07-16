@@ -7,8 +7,16 @@ import polars
 import pyparsing as pp
 from pyparsing import pyparsing_common as ppc
 
-from ... import _mech, data, schema
-from ...schema import Reaction, ReactionRate
+from ... import data, schema
+from ..._mech import Mechanism
+from ..._mech import from_data as mechanism_from_data
+from ...schema import (
+    Reaction,
+    ReactionDataFrame,
+    ReactionRate,
+    Species,
+    SpeciesDataFrame,
+)
 from ...util import df_
 
 # generic
@@ -39,7 +47,7 @@ DUP = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))
 # mechanism
 def mechanism(
     inp: str, out: str | None = None, spc_out: str | None = None
-) -> _mech.Mechanism:
+) -> Mechanism:
     """Extract the mechanism from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -49,11 +57,11 @@ def mechanism(
     """
     rxn_df = reactions(inp, out=out)
     spc_df = species(inp, out=spc_out)
-    return _mech.from_data(inp=rxn_df, spc_inp=spc_df)
+    return mechanism_from_data(inp=rxn_df, spc_inp=spc_df)
 
 
 # reactions
-def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
+def reactions(inp: str, out: str | None = None) -> ReactionDataFrame:
     """Extract reaction information as a dataframe from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -94,12 +102,11 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
         names.append(data.reac.equation(rxn))
         rates.append(data.reac.rate(rxn))
 
+    data_dct = {Reaction.eq: names, ReactionRate.rate: rates}
     rxn_df = polars.DataFrame(
-        data={Reaction.eq: names, ReactionRate.rate: rates},
-        schema=schema.types(Reaction, ReactionRate),
+        data=data_dct, schema=schema.types([Reaction, ReactionRate])
     )
 
-    print(rxn_df)
     rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
     df_.to_csv(rxn_df, out)
 
@@ -134,7 +141,7 @@ def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
 
 
 # species
-def species(inp: str, out: str | None = None) -> polars.DataFrame:
+def species(inp: str, out: str | None = None) -> SpeciesDataFrame:
     """Get the list of species, along with their comments.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -150,11 +157,11 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
 
     spc_block_str = species_block(inp, comments=True)
 
-    spc_dcts = [
-        {schema.Species.name: r.get("name"), **dict(r.get("values").asList())}
+    data_lst = [
+        {Species.name: r.get("name"), **dict(r.get("values").asList())}
         for r in parser.parseString(spc_block_str)
     ]
-    spc_df = polars.DataFrame(spc_dcts)
+    spc_df = polars.DataFrame(data_lst)
 
     spc_df = schema.species_table(spc_df)
     df_.to_csv(spc_df, out)
