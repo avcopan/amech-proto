@@ -10,6 +10,7 @@
 set -e  # if any command fails, quit
 REPOS=("autochem")
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+REPO_DIR=${SCRIPT_DIR}/..
 
 # 0. Read arguments
 USERNAME=${1}
@@ -24,7 +25,7 @@ read -p "Is this correct? If so, press enter to continue"
 
 # 1. Enter the source directory
 (
-    cd ${SCRIPT_DIR}/src
+    cd ${REPO_DIR}/src
 
     # 2. Loop through each repo and download it
     for repo in ${REPOS[@]}

@@ -8,6 +8,7 @@
 set -e  # if any command fails, quit
 REPOS=("autochem")
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+REPO_DIR=${SCRIPT_DIR}/..
 
 # 0. Read arguments
 COMMAND="${@:-git status}"
@@ -20,9 +21,9 @@ fi
 # 2. Loop through each repo and execute the command
 for repo in ${REPOS[@]}
 do
-    printf "\n*** Running command in ${SCRIPT_DIR}/src/${repo} ***\n"
+    printf "\n*** Running command in ${REPO_DIR}/src/${repo} ***\n"
     (
-        cd ${SCRIPT_DIR}/src/${repo} && ${COMMAND}
+        cd ${REPO_DIR}/src/${repo} && ${COMMAND}
     )
     printf "******\n"
 done

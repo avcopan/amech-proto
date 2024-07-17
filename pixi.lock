@@ -660,7 +660,7 @@ packages:
   name: amech-proto
   version: 0.1.0
   path: .
-  sha256: 2bca41214518dfa5845867a24978ee0069457a5ca771db1d1507537819c52457
+  sha256: 1988144c9e4f8b5063439758c7a4170601bb73d5ec71bc76e581087c4485626b
   requires_dist:
   - pyvis
   requires_python: '>=3.10'

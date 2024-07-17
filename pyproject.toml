@@ -19,6 +19,12 @@ platforms = ["linux-64"]
 amech-proto = { path = ".", editable = true }
 
 [tool.pixi.tasks]
+download = { cmd = "./download.sh", cwd = "scripts" }
+install = { cmd = "./install.sh", cwd = "scripts" }
+lint = { cmd = "./lint.sh", cwd = "scripts" }
+status = { cmd = "./status.sh", cwd = "scripts" }
+update = { cmd = "./update.sh", cwd = "scripts" }
+test = { cmd = "./test.sh", cwd = "scripts" }
 
 [tool.pixi.dependencies]
 ipython = ">=8.5.0"  	# AutoChem dependencies

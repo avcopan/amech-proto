@@ -29,4 +29,4 @@ jobs:
       # Lint
       - name: Lint
         run: |
-          pixi run -e dev ./lint.sh
+          pixi run -e dev lint
