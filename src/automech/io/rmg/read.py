@@ -13,7 +13,7 @@ from ... import schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
 from ...data.reac import SPECIES_NAME
-from ...schema import Species, SpeciesDataFrame
+from ...schema import Species
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -40,7 +40,7 @@ def mechanism(
     return mechanism_from_data(inp=rxn_df, spc_inp=spc_df)
 
 
-def species(inp: str, out: str | None = None) -> SpeciesDataFrame:
+def species(inp: str, out: str | None = None) -> polars.DataFrame:
     """Extract species information as a dataframe from an RMG species dictionary.
 
     :param inp: An RMG species dictionary, as a file path or string

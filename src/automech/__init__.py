@@ -3,7 +3,6 @@
 from . import data, io, util
 from ._mech import (
     Mechanism,
-    add_species,
     display,
     from_data,
     from_smiles,
@@ -18,7 +17,6 @@ __all__ = [
     # functions
     "from_data",
     "from_smiles",
-    "add_species",
     "display",
     "grow",
     "reactions",

@@ -5,7 +5,6 @@ from collections.abc import Sequence
 import automol
 import pandera.polars as pa
 import polars
-from pandera.typing.polars import DataFrame
 
 from automech.util import df_
 
@@ -21,16 +20,10 @@ class Species(pa.DataFrameModel):
     smi: str
 
 
-SpeciesDataFrame = DataFrame[Species]
-
-
 class Reaction(pa.DataFrameModel):
     """Core reaction table."""
 
     eq: str
-
-
-ReactionDataFrame = DataFrame[Species]
 
 
 # Extended tables
@@ -74,7 +67,7 @@ def species_table(
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
-) -> SpeciesDataFrame:
+) -> polars.DataFrame:
     """Validate a species data frame.
 
     :param df: The dataframe
@@ -137,7 +130,7 @@ def species_table(
 
 def reaction_table(
     df: polars.DataFrame, models: Sequence[pa.DataFrameModel] = (Reaction,)
-) -> ReactionDataFrame:
+) -> polars.DataFrame:
     """Validate a reactions data frame.
 
     :param df: The dataframe

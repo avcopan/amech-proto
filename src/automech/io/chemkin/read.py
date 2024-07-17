@@ -10,13 +10,7 @@ from pyparsing import pyparsing_common as ppc
 from ... import data, schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import (
-    Reaction,
-    ReactionDataFrame,
-    ReactionRate,
-    Species,
-    SpeciesDataFrame,
-)
+from ...schema import Reaction, ReactionRate, Species
 from ...util import df_
 
 # generic
@@ -61,7 +55,7 @@ def mechanism(
 
 
 # reactions
-def reactions(inp: str, out: str | None = None) -> ReactionDataFrame:
+def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     """Extract reaction information as a dataframe from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -141,7 +135,7 @@ def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
 
 
 # species
-def species(inp: str, out: str | None = None) -> SpeciesDataFrame:
+def species(inp: str, out: str | None = None) -> polars.DataFrame:
     """Get the list of species, along with their comments.
 
     :param inp: A CHEMKIN mechanism, as a file path or string

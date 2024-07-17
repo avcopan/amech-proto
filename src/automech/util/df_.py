@@ -52,7 +52,7 @@ def to_csv(
 def map_(
     df: FrameT,
     in_: Key_,
-    out: Key,
+    out: Key | None,
     func_: Callable,
     dct: dict[object, object] | None = None,
     dtype: polars.DataType | None = None,
@@ -62,7 +62,7 @@ def map_(
 
     :param df: The dataframe
     :param in_: The input key or keys
-    :param out: The output key
+    :param out: The output key; if `None`, the function output will be ignored
     :param func_: The mapping function
     :param dct: A lookup dictionary; If the arguments are a key in this dictionary, its
         value will be returned in place of the function value
@@ -81,11 +81,15 @@ def map_(
     if bar:
         row_iter = tqdm(row_iter, total=df.shape[0])
 
-    col = polars.Series(name=out, values=[row_func_(r) for r in row_iter])
-    if dtype is not None:
-        col = col.cast(dtype)
+    vals = list(map(row_func_, row_iter))
+    if out is not None:
+        col = polars.Series(name=out, values=vals)
+        if dtype is not None:
+            col = col.cast(dtype)
 
-    return df.with_columns(narwhals.from_native(col, series_only=True))
+        df = df.with_columns(narwhals.from_native(col, series_only=True))
+
+    return df
 
 
 @narwhals.narwhalify
@@ -107,7 +111,9 @@ def lookup_dict(
         return (
             True
             if key_ is None
-            else key_ in cols if isinstance(key_, str) else all(k in cols for k in key_)
+            else key_ in cols
+            if isinstance(key_, str)
+            else all(k in cols for k in key_)
         )
 
     def values_(key_):
