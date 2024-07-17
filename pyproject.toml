@@ -32,8 +32,8 @@ pyyaml = "*"
 qcelemental = "*"
 rdkit = "*"
 scipy = ">=1.9.0"
-xarray = ">=2022.6.0"	# AutoMech dependencies
-click = "*"
+xarray = ">=2022.6.0"
+click = "*"	            # AutoMech dependencies
 matplotlib = ">=3.6.0"
 pandas = ">=1.5.0"
 tqdm = "*"
