@@ -22,11 +22,10 @@ def from_csv(path: str) -> polars.DataFrame:
     :param path: The path to the CSV file
     :return: The dataframe
     """
-    df = polars.read_csv(path)
-    # try:
-    #     df = polars.read_csv(path)
-    # except pandas.errors.ParserError:
-    #     df = polars.read_csv(path, quote_char="'")
+    try:
+        df = polars.read_csv(path)
+    except polars.exceptions.ComputeError:
+        df = polars.read_csv(path, quote_char="'")
     return df
 
 

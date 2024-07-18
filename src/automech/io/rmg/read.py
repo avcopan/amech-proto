@@ -67,8 +67,8 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     data_dct = {
         Species.name: names,
         Species.spin: mults,
-        Species.chi: chis,
-        Species.smi: smis,
+        Species.amchi: chis,
+        Species.smiles: smis,
     }
     spc_df = polars.DataFrame(
         data=data_dct, schema=schema.types([Species], data_dct.keys())

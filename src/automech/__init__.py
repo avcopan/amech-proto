@@ -6,7 +6,6 @@ from ._mech import (
     display,
     from_data,
     from_smiles,
-    grow,
     reactions,
     species,
 )
@@ -18,7 +17,6 @@ __all__ = [
     "from_data",
     "from_smiles",
     "display",
-    "grow",
     "reactions",
     "species",
     # modules

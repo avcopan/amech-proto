@@ -75,7 +75,7 @@ def from_smiles(
     name_dct = {chi_dct[k]: v for k, v in name_dct.items() if k in smis}
     spin_dct = {chi_dct[k]: v for k, v in spin_dct.items() if k in smis}
     charge_dct = {chi_dct[k]: v for k, v in charge_dct.items() if k in smis}
-    data_dct = {Species.smi: smis, Species.chi: chis}
+    data_dct = {Species.smiles: smis, Species.amchi: chis}
     dt = schema.types([Species], data_dct.keys())
     spc_df = polars.DataFrame(data=data_dct, schema=dt)
     spc_df = schema.species_table(
@@ -83,7 +83,7 @@ def from_smiles(
     )
 
     # Build the reactions dataframe
-    trans_dct = df_.lookup_dict(spc_df, Species.smi, Species.name)
+    trans_dct = df_.lookup_dict(spc_df, Species.smiles, Species.name)
     rxn_smis_lst = list(map(automol.smiles.reaction_reactants_and_products, rxn_smis))
     eqs = [
         data.reac.write_chemkin_equation(rs, ps, trans_dct=trans_dct)
@@ -115,49 +115,49 @@ def reactions(mech: Mechanism) -> polars.DataFrame:
 
 
 # transformations
-def grow(
-    mech: Mechanism,
-    rxn_type: str,
-    rct1s: Sequence[str] | None = None,
-    rct2s: Sequence[str] | None = None,
-    prds: Sequence[str] | None = None,
-    id_: str = Species.smi,
-    unimol: bool = True,
-    bimol: bool = True,
-) -> Mechanism:
-    """Grow a mechanism by enumerating and adding reactions.
+# def grow(
+#     mech: Mechanism,
+#     rxn_type: str,
+#     rct1s: Sequence[str] | None = None,
+#     rct2s: Sequence[str] | None = None,
+#     prds: Sequence[str] | None = None,
+#     id_: str = Species.smiles,
+#     unimol: bool = True,
+#     bimol: bool = True,
+# ) -> Mechanism:
+#     """Grow a mechanism by enumerating and adding reactions.
 
-    :param mech: The mechanism
-    :param rxn_type: The reaction type to enumerate
-    :param rct1s: Optionally, require one reagent to match one of these identifiers
-    :param rct2s: Optionally, require a second reagent to match one of these identifiers
-    :param prds: Optionally, require a product to match one of these identifiers
-    :param id_: The identifier type for species lists, 'smi' or 'chi'
-    :param unimol: Include unimolecular reactions?
-    :param bimol: Include bimolecular reactions?
-    """
-    spc_df = mech.species
-    chi_dct = df_.lookup_dict(spc_df, id_, Species.chi)
-    chi_conv_ = automol.smiles.amchi if id_ == Species.smi else lambda x: x
+#     :param mech: The mechanism
+#     :param rxn_type: The reaction type to enumerate
+#     :param rct1s: Optionally, require one reagent to match one of these
+#     :param rct2s: Optionally, require a second reagent to match one of these
+#     :param prds: Optionally, require a product to match one of these identifiers
+#     :param id_: The identifier type for species lists, 'smi' or 'chi'
+#     :param unimol: Include unimolecular reactions?
+#     :param bimol: Include bimolecular reactions?
+#     """
+#     spc_df = mech.species
+#     chi_dct = df_.lookup_dict(spc_df, id_, Species.amchi)
+#     chi_conv_ = automol.smiles.amchi if id_ == Species.smiles else lambda x: x
 
-    r1_chis = list(spc_df[Species.chi] if rct1s is None else map(chi_dct.get, rct1s))
-    r2_chis = list(spc_df[Species.chi] if rct2s is None else map(chi_dct.get, rct2s))
-    p_chis = None if prds is None else list(map(chi_conv_, prds))
+#     r1_chis = list(spc_df[Species.amchi] if rct1s is None else map(chi_dct.get,rct1s))
+#     r2_chis = list(spc_df[Species.amchi] if rct2s is None else map(chi_dct.get,rct2s))
+#     p_chis = None if prds is None else list(map(chi_conv_, prds))
 
-    rxns = ()
-    if unimol:
-        for chi in r1_chis:
-            rxns += automol.reac.enumerate_from_amchis([chi], rxn_type=rxn_type)
-    if bimol:
-        for chi1, chi2 in zip(r1_chis, r2_chis, strict=True):
-            rxns += automol.reac.enumerate_from_amchis([chi1, chi2], rxn_type=rxn_type)
+#     rxns = ()
+#     if unimol:
+#         for chi in r1_chis:
+#             rxns += automol.reac.enumerate_from_amchis([chi], rxn_type=rxn_type)
+#     if bimol:
+#         for chi1, chi2 in zip(r1_chis, r2_chis, strict=True):
+#             rxns += automol.reac.enumerate_from_amchis([chi1,chi2], rxn_type=rxn_type)
 
-    # prds = None if prds is None else
-    print(mech)
-    print(rxn_type)
-    print(r1_chis)
-    print(r2_chis)
-    print(p_chis)
+#     # prds = None if prds is None else
+#     print(mech)
+#     print(rxn_type)
+#     print(r1_chis)
+#     print(r2_chis)
+#     print(p_chis)
 
 
 # properties
@@ -200,7 +200,7 @@ def display(
         fml = automol.amchi.formula(chi)
         return any(automol.form.match(fml, e) for e in excl_fmls)
 
-    spc_df = df_.map_(spc_df, Species.chi, "excluded", _is_excluded)
+    spc_df = df_.map_(spc_df, Species.amchi, "excluded", _is_excluded)
     excl_names = list(spc_df.filter(polars.col("excluded"))[Species.name])
 
     def _image_path(chi):
@@ -228,10 +228,10 @@ def display(
                 net.add_edge(rname, pname, title=eq)
 
     # Generate SVG drawings with paths
-    spc_df = df_.map_(spc_df, Species.chi, "image_path", _image_path)
+    spc_df = df_.map_(spc_df, Species.amchi, "image_path", _image_path)
     # Add nodes to the network
     spc_df = df_.map_(
-        spc_df, (Species.name, Species.smi, "image_path"), None, _add_node
+        spc_df, (Species.name, Species.smiles, "image_path"), None, _add_node
     )
     # Add edges to the network
     rxn_df = df_.map_(rxn_df, Reaction.eq, None, _add_edge)
