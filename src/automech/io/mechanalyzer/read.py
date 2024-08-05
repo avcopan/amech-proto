@@ -2,6 +2,7 @@
 
 import io
 import os
+from pathlib import Path
 
 import polars
 
@@ -35,7 +36,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     :param out: Optionally, write the output to this file path
     :return: The species dataframe
     """
-    inp = open(inp).read() if os.path.exists(inp) else inp
+    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     spc_df = polars.read_csv(io.StringIO(inp), quote_char="'")
     spc_df = species_table(spc_df)

@@ -2,6 +2,7 @@
 
 import os
 import re
+from pathlib import Path
 
 import polars
 import pyparsing as pp
@@ -202,7 +203,7 @@ def block(inp: str, key: str, comments: bool = False) -> str:
     :param comments: Include comments?
     :return: The block
     """
-    inp = open(inp).read() if os.path.exists(inp) else inp
+    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     block_par = pp.Suppress(...) + pp.QuotedString(
         key, end_quote_char="END", multiline=True
@@ -220,7 +221,7 @@ def without_comments(inp: str) -> str:
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The string, without comments
     """
-    inp = open(inp).read() if os.path.exists(inp) else inp
+    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     inp = re.sub(COMMENT_REGEX, "", inp)
     return re.sub(HASH_COMMENT_REGEX, "", inp)
@@ -232,7 +233,7 @@ def all_comments(inp: str) -> list[str]:
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The comments
     """
-    inp = open(inp).read() if os.path.exists(inp) else inp
+    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     return re.findall(COMMENT_REGEX, inp)
 

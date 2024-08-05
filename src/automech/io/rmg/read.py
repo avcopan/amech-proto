@@ -1,6 +1,7 @@
 """Functions for reading RMG-formatted files."""
 
 import os
+from pathlib import Path
 
 import automol
 import polars
@@ -47,7 +48,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     :param out: Optionally, write the output to this file path
     :return: The species dataframe
     """
-    inp = open(inp).read() if os.path.exists(inp) else inp
+    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     spc_par_rets = SPECIES_DICT.parseString(inp).asDict()["dict"]
 

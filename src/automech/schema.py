@@ -80,7 +80,6 @@ def species_table(
     """
     dt_dct = types([Species])
     df = df.rename({k: str.lower(k) for k in df.columns})
-
     assert (
         Species.amchi in df or Species.smiles in df
     ), f"Must have either 'chi' or 'smi' column: {df}"
