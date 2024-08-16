@@ -3,7 +3,7 @@
 import dataclasses
 import itertools
 import textwrap
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 import automol
@@ -239,19 +239,52 @@ def display(
     net.write_html(str(out_dir / out_name), open_browser=open_browser)
 
 
-# def display_reactions(
-#     mech: Mechanism,
-#     eqs: Collection | None = None,
-#     stereo: bool = True,
-#     keys: tuple[str, ...] = (Reactions.eq,),
-#     spc_keys: tuple[str, ...] = (Species.smi,),
-# ):
-#     """Display the reactions in a mechanism.
+def display_reactions(
+    mech: Mechanism,
+    eqs: Collection | None = None,
+    stereo: bool = True,
+    keys: tuple[str, ...] = (Reaction.eq,),
+    spc_keys: tuple[str, ...] = (Species.smiles,),
+):
+    """Display the reactions in a mechanism.
 
-#     :param mech: _description_
-#     :param eqs: _description_, defaults to None
-#     :param stereo: _description_, defaults to True
-#     :param keys: _description_, defaults to (Reactions.eq,)
-#     :param spc_keys: _description_, defaults to (Species.smi,)
-#     """
-#     pass
+    :param mech: The mechanism
+    :param eqs: Optionally, specify specific equations to visualize
+    :param stereo: Include stereochemistry in species drawings?, defaults to True
+    :param keys: Keys of extra columns to print
+    :param spc_keys: Optionally, translate the reactant and product names into these
+        species dataframe values
+    """
+    # Read in the mechanism data
+    spc_df: polars.DataFrame = species(mech)
+    rxn_df: polars.DataFrame = reactions(mech)
+
+    chi_dct = df_.lookup_dict(spc_df, Species.name, Species.amchi)
+    trans_dcts = {k: df_.lookup_dict(spc_df, Species.name, k) for k in spc_keys}
+
+    if eqs is not None:
+        eqs = list(map(data.reac.standardize_chemkin_equation, eqs))
+        rxn_df = rxn_df.filter(polars.col(Reaction.eq).is_in(eqs))
+
+    def _display_reaction(eq, *vals):
+        """Add a node to the network."""
+        # Print the requested information
+        for key, val in zip(keys, vals, strict=True):
+            print(f"{key}: {val}")
+
+        # Display the reaction
+        rchis, pchis, _ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
+
+        for key, trans_dct in trans_dcts.items():
+            rvals, pvals, _ = data.reac.read_chemkin_equation(eq, trans_dct=trans_dct)
+            print(f"Species `name`=>`{key}` translation")
+            print(f"  reactants = {rvals}")
+            print(f"  products = {pvals}")
+
+        if not all(isinstance(n, str) for n in rchis + pchis):
+            print(f"Some ChIs missing from species table: {rchis} = {pchis}")
+        else:
+            automol.amchi.display_reaction(rchis, pchis, stereo=stereo)
+
+    # Display the requested reactions
+    rxn_df = df_.map_(rxn_df, (Reaction.eq, *keys), None, _display_reaction)

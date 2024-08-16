@@ -4,6 +4,7 @@ from . import data, io, util
 from ._mech import (
     Mechanism,
     display,
+    display_reactions,
     from_data,
     from_smiles,
     reactions,
@@ -17,6 +18,7 @@ __all__ = [
     "from_data",
     "from_smiles",
     "display",
+    "display_reactions",
     "reactions",
     "species",
     # modules
