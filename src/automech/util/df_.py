@@ -71,6 +71,7 @@ def map_(
     """
     dct = {} if dct is None else dct
     in_ = (in_,) if isinstance(in_, str) else tuple(in_)
+    dct = {((k,) if isinstance(k, str) else k): v for k, v in dct.items()}
 
     def row_func_(row: dict[str, object]):
         args = tuple(map(row.get, in_))
