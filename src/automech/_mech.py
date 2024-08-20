@@ -239,6 +239,46 @@ def display(
     net.write_html(str(out_dir / out_name), open_browser=open_browser)
 
 
+def display_species(
+    mech: Mechanism,
+    sel_vals: Sequence[str] | None = None,
+    sel_key: str = Species.name,
+    stereo: bool = True,
+    keys: tuple[str, ...] = (
+        Species.name,
+        Species.smiles,
+    ),
+):
+    """Display the species in a mechanism.
+
+    :param mech: The mechanism
+    :param sel_vals: Select species by column value, defaults to None
+    :param sel_key: The column to use for selection, defaults to Species.smiles
+    :param stereo: Include stereochemistry in species drawings?, defaults to True
+    :param keys: Keys of extra columns to print
+    """
+    # Read in the mechanism data
+    spc_df: polars.DataFrame = species(mech)
+
+    if sel_vals is not None:
+        if sel_key == Species.smiles:
+            sel_vals = list(map(automol.smiles.amchi, sel_vals))
+            sel_key = Species.amchi
+        spc_df = spc_df.filter(polars.col(sel_key).is_in(sel_vals))
+        keys = (sel_key, *keys) if sel_key not in keys else keys
+
+    def _display_species(chi, *vals):
+        """Display a species."""
+        # Print the requested information
+        for key, val in zip(keys, vals, strict=True):
+            print(f"{key}: {val}")
+
+        automol.amchi.display(chi, stereo=stereo)
+
+    # Display the requested reactions
+    spc_df = df_.map_(spc_df, (Species.amchi, *keys), None, _display_species)
+
+
 def display_reactions(
     mech: Mechanism,
     eqs: Collection | None = None,

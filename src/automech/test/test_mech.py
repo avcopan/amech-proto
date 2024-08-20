@@ -1,7 +1,7 @@
 """Test automech functions."""
 
 import automech
-from automech.schema import Reaction, Species
+from automech.schema import Species
 
 
 def test__from_smiles():
