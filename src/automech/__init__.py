@@ -5,10 +5,18 @@ from ._mech import (
     Mechanism,
     display,
     display_reactions,
+    display_species,
+    expand_stereo,
     from_data,
     from_smiles,
+    reacting_species_names,
+    reaction_count,
     reactions,
+    set_reactions,
+    set_species,
     species,
+    species_count,
+    without_unused_species,
 )
 
 __all__ = [
@@ -17,10 +25,23 @@ __all__ = [
     # functions
     "from_data",
     "from_smiles",
-    "display",
-    "display_reactions",
-    "reactions",
+    # getters
     "species",
+    "reactions",
+    # setters
+    "set_species",
+    "set_reactions",
+    # properties
+    "species_count",
+    "reaction_count",
+    "reacting_species_names",
+    # transformations
+    "without_unused_species",
+    "expand_stereo",
+    # display
+    "display",
+    "display_species",
+    "display_reactions",
     # modules
     "io",
     "data",

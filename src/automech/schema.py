@@ -9,9 +9,11 @@ import polars
 
 from automech.util import df_
 
+Model = pa.DataFrameModel
+
 
 # Core table schemas
-class Species(pa.DataFrameModel):
+class Species(Model):
     """Core species table."""
 
     name: str
@@ -21,29 +23,36 @@ class Species(pa.DataFrameModel):
     charge: int
 
 
-class Reaction(pa.DataFrameModel):
+class Reaction(Model):
     """Core reaction table."""
 
     eq: str
 
 
 # Extended tables
-class ReactionRate(pa.DataFrameModel):
+class SpeciesStereo(Model):
+    """Stereo-expanded species table."""
+
+    orig_name: str
+    orig_smiles: str
+    orig_amchi: str
+
+
+class ReactionStereo(Model):
+    """Stereo-expanded reaction table."""
+
+    amchi: str
+    orig_eq: str
+
+
+class ReactionRate(Model):
     """Reaction table with rate."""
 
     rate: object
 
 
-# class SpeciesExp(pa.DataFrameModel):
-#     """Stereo-expanded species table."""
-
-#     orig_name: str
-#     orig_chi: str
-#     orig_smi: str
-
-
 def types(
-    models: Sequence[pa.DataFrameModel], keys: Sequence[str] | None = None
+    models: Sequence[Model], keys: Sequence[str] | None = None
 ) -> dict[str, type]:
     """Get a dictionary mapping column names to type names.
 
@@ -64,7 +73,7 @@ def types(
 
 def species_table(
     df: polars.DataFrame,
-    models: Sequence[pa.DataFrameModel] = (Species,),
+    models: Sequence[Model] = (),
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
@@ -72,12 +81,15 @@ def species_table(
     """Validate a species data frame.
 
     :param df: The dataframe
-    :param models: DataFrame models to validate against
+    :param models: Extra species models to validate against
     :param name_dct: If generating names, specify some names by ChI
     :param spin_dct: If generating spins, specify some spins by ChI
     :param charge_dct: If generating charges, specify some charges by ChI
     :return: The validated dataframe
     """
+    if Species not in models:
+        models = (Species, *models)
+
     dt_dct = types([Species])
     df = df.rename({k: str.lower(k) for k in df.columns})
     assert (
@@ -130,13 +142,17 @@ def species_table(
 
 
 def reaction_table(
-    df: polars.DataFrame, models: Sequence[pa.DataFrameModel] = (Reaction,)
+    df: polars.DataFrame, models: Sequence[Model] = ()
 ) -> polars.DataFrame:
     """Validate a reactions data frame.
 
     :param df: The dataframe
+    :param models: Extra reaction models to validate against
     :return: The validated dataframe
     """
+    if Reaction not in models:
+        models = (Reaction, *models)
+
     df = df.rename({k: str.lower(k) for k in df.columns})
 
     for model in models:

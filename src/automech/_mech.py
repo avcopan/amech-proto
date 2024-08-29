@@ -7,12 +7,13 @@ from collections.abc import Collection, Sequence
 from pathlib import Path
 
 import automol
+import more_itertools as mit
 import polars
 import pyvis
 
 # from IPython import display as ipd
 from . import data, schema
-from .schema import Reaction, Species
+from .schema import Model, Reaction, ReactionStereo, Species, SpeciesStereo
 from .util import df_
 
 
@@ -32,23 +33,30 @@ class Mechanism:
 
 
 # constructors
-def from_data(inp, spc_inp) -> Mechanism:
+def from_data(
+    rxn_inp: str | polars.DataFrame,
+    spc_inp: str | polars.DataFrame,
+    rxn_models: Sequence[Model] = (),
+    spc_models: Sequence[Model] = (),
+) -> Mechanism:
     """Contruct a mechanism object from data.
 
-    :param inp: A reactions table, as a CSV file path or dataframe
+    :param rxn_inp: A reactions table, as a CSV file path or dataframe
     :param spc_inp: A species table, as a CSV file path or dataframe
-    :param validate: Validate the data?
+    :param rxn_models: Extra reaction models to validate against
+    :param spc_models: Extra species models to validate against
+    :param drop_spc: Drop unused species from the mechanism?
     :return: The mechanism object
     """
-    rxn_df = df_.from_csv(inp) if isinstance(inp, str) else inp
+    rxn_df = df_.from_csv(rxn_inp) if isinstance(rxn_inp, str) else rxn_inp
     spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
-    rxn_df = schema.reaction_table(rxn_df)
-    spc_df = schema.species_table(spc_df)
+    rxn_df = schema.reaction_table(rxn_df, models=rxn_models)
+    spc_df = schema.species_table(spc_df, models=spc_models)
     return Mechanism(reactions=rxn_df, species=spc_df)
 
 
 def from_smiles(
-    smis: Sequence[str],
+    spc_smis: Sequence[str] = (),
     rxn_smis: Sequence[str] = (),
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
@@ -58,7 +66,7 @@ def from_smiles(
 
     If `name_dct` is `None`, CHEMKIN names will be auto-generated.
 
-    :param smis: The species SMILES strings
+    :param spc_smis: The species SMILES strings
     :param rxn_smis: Optionally, the reaction SMILES strings
     :param name_dct: Optionally, specify the name for some molecules
     :param spin_dct: Optionally, specify the spin state (2S) for some molecules
@@ -69,13 +77,20 @@ def from_smiles(
     spin_dct = {} if spin_dct is None else spin_dct
     charge_dct = {} if charge_dct is None else charge_dct
 
+    # Add in any missing species from the reaction SMILES
+    spc_smis_by_rxn = [
+        rs + ps
+        for (rs, ps) in map(automol.smiles.reaction_reactants_and_products, rxn_smis)
+    ]
+    spc_smis = list(mit.unique_everseen(itertools.chain(spc_smis, *spc_smis_by_rxn)))
+
     # Build the species dataframe
-    chis = list(map(automol.smiles.amchi, smis))
-    chi_dct = dict(zip(smis, chis, strict=True))
-    name_dct = {chi_dct[k]: v for k, v in name_dct.items() if k in smis}
-    spin_dct = {chi_dct[k]: v for k, v in spin_dct.items() if k in smis}
-    charge_dct = {chi_dct[k]: v for k, v in charge_dct.items() if k in smis}
-    data_dct = {Species.smiles: smis, Species.amchi: chis}
+    chis = list(map(automol.smiles.amchi, spc_smis))
+    chi_dct = dict(zip(spc_smis, chis, strict=True))
+    name_dct = {chi_dct[k]: v for k, v in name_dct.items() if k in spc_smis}
+    spin_dct = {chi_dct[k]: v for k, v in spin_dct.items() if k in spc_smis}
+    charge_dct = {chi_dct[k]: v for k, v in charge_dct.items() if k in spc_smis}
+    data_dct = {Species.smiles: spc_smis, Species.amchi: chis}
     dt = schema.types([Species], data_dct.keys())
     spc_df = polars.DataFrame(data=data_dct, schema=dt)
     spc_df = schema.species_table(
@@ -114,53 +129,189 @@ def reactions(mech: Mechanism) -> polars.DataFrame:
     return mech.reactions
 
 
-# transformations
-# def grow(
-#     mech: Mechanism,
-#     rxn_type: str,
-#     rct1s: Sequence[str] | None = None,
-#     rct2s: Sequence[str] | None = None,
-#     prds: Sequence[str] | None = None,
-#     id_: str = Species.smiles,
-#     unimol: bool = True,
-#     bimol: bool = True,
-# ) -> Mechanism:
-#     """Grow a mechanism by enumerating and adding reactions.
+# getters
+def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
+    """Set the species dataframe for a mechanism.
 
-#     :param mech: The mechanism
-#     :param rxn_type: The reaction type to enumerate
-#     :param rct1s: Optionally, require one reagent to match one of these
-#     :param rct2s: Optionally, require a second reagent to match one of these
-#     :param prds: Optionally, require a product to match one of these identifiers
-#     :param id_: The identifier type for species lists, 'smi' or 'chi'
-#     :param unimol: Include unimolecular reactions?
-#     :param bimol: Include bimolecular reactions?
-#     """
-#     spc_df = mech.species
-#     chi_dct = df_.lookup_dict(spc_df, id_, Species.amchi)
-#     chi_conv_ = automol.smiles.amchi if id_ == Species.smiles else lambda x: x
+    :param mech: The mechanism
+    :return: The mechanism with updated species
+    """
+    return from_data(reactions(mech), spc_df)
 
-#     r1_chis = list(spc_df[Species.amchi] if rct1s is None else map(chi_dct.get,rct1s))
-#     r2_chis = list(spc_df[Species.amchi] if rct2s is None else map(chi_dct.get,rct2s))
-#     p_chis = None if prds is None else list(map(chi_conv_, prds))
 
-#     rxns = ()
-#     if unimol:
-#         for chi in r1_chis:
-#             rxns += automol.reac.enumerate_from_amchis([chi], rxn_type=rxn_type)
-#     if bimol:
-#         for chi1, chi2 in zip(r1_chis, r2_chis, strict=True):
-#             rxns += automol.reac.enumerate_from_amchis([chi1,chi2], rxn_type=rxn_type)
+def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
+    """Set the reactions dataframe for a mechanism.
 
-#     # prds = None if prds is None else
-#     print(mech)
-#     print(rxn_type)
-#     print(r1_chis)
-#     print(r2_chis)
-#     print(p_chis)
+    :param mech: The mechanism
+    :return: The mechanism with updated reactions
+    """
+    return from_data(rxn_df, species(mech))
 
 
 # properties
+def species_count(mech: Mechanism) -> int:
+    """Get the number of species in a mechanism.
+
+    :param mech: The mechanism
+    :return: The number of species
+    """
+    return species(mech).select(polars.len()).item()
+
+
+def reaction_count(mech: Mechanism) -> int:
+    """Get the number of reactions in a mechanism.
+
+    :param mech: The mechanism
+    :return: The number of reactions
+    """
+    return reactions(mech).select(polars.len()).item()
+
+
+def reacting_species_names(mech: Mechanism) -> list[str]:
+    """Get the names of the species that are involved in reactions.
+
+    :param mech: The mechanism
+    :return: The names of reacting species
+    """
+    rxn_df = reactions(mech)
+    eqs = rxn_df[Reaction.eq].to_list()
+    rxn_names = [r + p for r, p, _ in map(data.reac.read_chemkin_equation, eqs)]
+    names = list(mit.unique_everseen(itertools.chain(*rxn_names)))
+    return names
+
+
+# transformations
+def without_unused_species(mech: Mechanism) -> Mechanism:
+    """Remove unused species from a mechanism.
+
+    :param mech: The mechanism
+    :return: The mechanism, without unused species
+    """
+    spc_df = species(mech)
+    used_names = reacting_species_names(mech)
+    spc_df = spc_df.filter(polars.col(Species.name).is_in(used_names))
+    return set_species(mech, spc_df)
+
+
+def expand_stereo(
+    mech: Mechanism,
+    enant: bool = True,
+    strained: bool = False,
+    drop_unused: bool = True,
+) -> tuple[Mechanism, Mechanism]:
+    """Expand stereochemistry for a mechanism.
+
+    :param mech: The mechanism
+    :param enant: Distinguish between enantiomers?, defaults to True
+    :param strained: Include strained stereoisomers?
+    :param drop_unused: Drop unused species from the mechanism?
+    :return: A mechanism with the classified reactions, and one with the unclassified
+    """
+    # Read in the mechanism data
+    spc_df0: polars.DataFrame = species(mech)
+    rxn_df: polars.DataFrame = reactions(mech)
+
+    # Do the species expansion
+    spc_df = _expand_species_stereo(spc_df0, enant=enant, strained=strained)
+
+    # Do the reaction expansion
+    chi_dct: dict = df_.lookup_dict(
+        spc_df, SpeciesStereo.orig_name, SpeciesStereo.orig_amchi
+    )
+    name_dct: dict = df_.lookup_dict(
+        spc_df, (SpeciesStereo.orig_name, Species.amchi), Species.name
+    )
+
+    def _expand_amchi(orig_eq):
+        """Classify a reaction and return the reaction objects."""
+        rname0s, pname0s, coll = data.reac.read_chemkin_equation(orig_eq)
+        rchi0s = list(map(chi_dct.get, rname0s))
+        pchi0s = list(map(chi_dct.get, pname0s))
+        objs = automol.reac.from_amchis(rchi0s, pchi0s, stereo=False)
+        vals = []
+        for obj in objs:
+            sobjs = automol.reac.expand_stereo(obj, enant=enant, strained=strained)
+            for sobj in sobjs:
+                # Determine the AMChI
+                chi = automol.reac.ts_amchi(sobj)
+                # Determine the updated equation
+                rchis, pchis = automol.reac.amchis(sobj)
+                rnames = tuple(map(name_dct.get, zip(rname0s, rchis, strict=True)))
+                pnames = tuple(map(name_dct.get, zip(pname0s, pchis, strict=True)))
+                eq = data.reac.write_chemkin_equation(rnames, pnames, coll)
+                vals.append([eq, chi])
+        return vals if vals else polars.Null
+
+    tmp_col = "tmp"
+    rxn_df = df_.map_(rxn_df, Reaction.eq, tmp_col, _expand_amchi)
+
+    # Separate out the error cases
+    err_df = rxn_df.filter(polars.col(tmp_col).is_null())
+    rxn_df = rxn_df.filter(polars.col(tmp_col).is_not_null())
+
+    # Expand the table by stereoisomers
+    err_df = err_df.drop(tmp_col)
+    rxn_df = rxn_df.explode(polars.col(tmp_col))
+
+    # Split the AMChI and equation columns
+    rxn_df = rxn_df.rename({Reaction.eq: ReactionStereo.orig_eq})
+    rxn_df = rxn_df.with_columns(
+        polars.col(tmp_col)
+        .list.to_struct()
+        .struct.rename_fields([Reaction.eq, ReactionStereo.amchi])
+    ).unnest(tmp_col)
+
+    mech = from_data(rxn_df, spc_df)
+    err_mech = from_data(err_df, spc_df0)
+
+    if drop_unused:
+        mech = without_unused_species(mech)
+        err_mech = without_unused_species(err_mech)
+
+    return mech, err_mech
+
+
+def _expand_species_stereo(
+    spc_df: polars.DataFrame, enant: bool = True, strained: bool = False
+) -> polars.DataFrame:
+    """Stereoexpand the species from a mechanism.
+
+    :param spc_df: A species table, as a dataframe
+    :param enant: Distinguish between enantiomers?
+    :param strained: Include strained stereoisomers?
+    :return: The stereoexpanded species table
+    """
+
+    # Do the species expansion based on AMChIs
+    def _expand_amchi(chi):
+        """Expand stereo for the AMChIs."""
+        return automol.amchi.expand_stereo(chi, enant=enant)
+
+    spc_df = spc_df.rename({Species.amchi: SpeciesStereo.orig_amchi})
+    spc_df = df_.map_(spc_df, SpeciesStereo.orig_amchi, Species.amchi, _expand_amchi)
+    spc_df = spc_df.explode(polars.col(Species.amchi))
+
+    # Update the species names
+    def _stereo_name(orig_name, chi):
+        """Determine the stereo name from the AMChI."""
+        return automol.amchi.chemkin_name(chi, root_name=orig_name)
+
+    spc_df = spc_df.rename({Species.name: SpeciesStereo.orig_name})
+    spc_df = df_.map_(
+        spc_df, (SpeciesStereo.orig_name, Species.amchi), Species.name, _stereo_name
+    )
+
+    # Update the SMILES strings
+    def _stereo_smiles(chi):
+        """Determine the stereo smiles from the AMChI."""
+        return automol.amchi.smiles(chi)
+
+    spc_df = spc_df.rename({Species.smiles: SpeciesStereo.orig_smiles})
+    spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles)
+    return spc_df
+
+
+# display
 def display(
     mech: Mechanism,
     stereo: bool = True,

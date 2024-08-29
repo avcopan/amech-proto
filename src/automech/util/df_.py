@@ -83,7 +83,7 @@ def map_(
 
     vals = list(map(row_func_, row_iter))
     if out is not None:
-        col = polars.Series(name=out, values=vals, dtype=dtype)
+        col = polars.Series(name=out, values=vals, dtype=dtype, strict=False)
 
         df = df.with_columns(narwhals.from_native(col, series_only=True))
 

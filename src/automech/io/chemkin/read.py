@@ -52,7 +52,7 @@ def mechanism(
     """
     rxn_df = reactions(inp, out=out)
     spc_df = species(inp, out=spc_out)
-    return mechanism_from_data(inp=rxn_df, spc_inp=spc_df)
+    return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
 
 
 # reactions
