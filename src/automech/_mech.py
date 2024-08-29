@@ -238,6 +238,9 @@ def expand_stereo(
                 rchis, pchis = automol.reac.amchis(sobj)
                 rnames = tuple(map(name_dct.get, zip(rname0s, rchis, strict=True)))
                 pnames = tuple(map(name_dct.get, zip(pname0s, pchis, strict=True)))
+                if not all(isinstance(n, str) for n in rnames + pnames):
+                    return polars.Null
+
                 eq = data.reac.write_chemkin_equation(rnames, pnames, coll)
                 vals.append([eq, chi])
         return vals if vals else polars.Null
