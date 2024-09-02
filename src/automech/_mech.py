@@ -175,7 +175,7 @@ def reacting_species_names(mech: Mechanism) -> list[str]:
     """
     rxn_df = reactions(mech)
     eqs = rxn_df[Reaction.eq].to_list()
-    rxn_names = [r + p for r, p, _ in map(data.reac.read_chemkin_equation, eqs)]
+    rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
     names = list(mit.unique_everseen(itertools.chain(*rxn_names)))
     return names
 
@@ -224,7 +224,7 @@ def expand_stereo(
 
     def _expand_amchi(orig_eq):
         """Classify a reaction and return the reaction objects."""
-        rname0s, pname0s, coll = data.reac.read_chemkin_equation(orig_eq)
+        rname0s, pname0s, coll, arrow = data.reac.read_chemkin_equation(orig_eq)
         rchi0s = list(map(chi_dct.get, rname0s))
         pchi0s = list(map(chi_dct.get, pname0s))
         objs = automol.reac.from_amchis(rchi0s, pchi0s, stereo=False)
@@ -241,7 +241,7 @@ def expand_stereo(
                 if not all(isinstance(n, str) for n in rnames + pnames):
                     return polars.Null
 
-                eq = data.reac.write_chemkin_equation(rnames, pnames, coll)
+                eq = data.reac.write_chemkin_equation(rnames, pnames, coll, arrow)
                 vals.append([eq, chi])
         return vals if vals else polars.Null
 
@@ -376,7 +376,7 @@ def display(
 
     def _add_edge(eq):
         """Add an edge to the network."""
-        rnames, pnames, _ = data.reac.read_chemkin_equation(eq)
+        rnames, pnames, *_ = data.reac.read_chemkin_equation(eq)
         for rname, pname in itertools.product(rnames, pnames):
             if rname not in excl_names and pname not in excl_names:
                 net.add_edge(rname, pname, title=eq)
@@ -467,10 +467,10 @@ def display_reactions(
             print(f"{key}: {val}")
 
         # Display the reaction
-        rchis, pchis, _ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
+        rchis, pchis, *_ = data.reac.read_chemkin_equation(eq, trans_dct=chi_dct)
 
         for key, trans_dct in trans_dcts.items():
-            rvals, pvals, _ = data.reac.read_chemkin_equation(eq, trans_dct=trans_dct)
+            rvals, pvals, *_ = data.reac.read_chemkin_equation(eq, trans_dct=trans_dct)
             print(f"Species `name`=>`{key}` translation")
             print(f"  reactants = {rvals}")
             print(f"  products = {pvals}")

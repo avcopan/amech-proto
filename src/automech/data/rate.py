@@ -6,11 +6,10 @@ Eventually, we will want to add a "Raw" rate type with k(T,P) values stored in a
 import abc
 import dataclasses
 import enum
+from collections.abc import Sequence
 from typing import Any
 
-Params3 = tuple[float, float, float]
-Params4 = tuple[float, float, float, float]
-Params3or4 = Params3 | Params4
+Params = Sequence[float]
 
 
 class RateType(str, enum.Enum):
@@ -185,7 +184,6 @@ class SimpleRate(Rate):
 
         if self.type_ != RateType.CONSTANT:
             self.f = BlendingFunction() if self.f is None else self.f
-            self.m = "M" if self.m is None else self.m
 
 
 def arrhenius_function(rate: SimpleRate) -> ArrheniusFunction:
@@ -330,54 +328,6 @@ def high_p_params(rate: SimpleRate | PlogRate, lt: bool = True) -> tuple[float, 
     :return: The Arrhenius parameters A, b, E, (B*, C*)
     """
     return arrhenius_params(high_p_arrhenius_function(rate), lt=lt)
-
-
-def from_chemkin(
-    arrow: str = "=",
-    coll: str = "",
-    arrh: Params3 | None = None,
-    arrh0: Params4 | None = None,
-    troe: Params3or4 | None = None,
-    plog: tuple[Params4, ...] | None = None,
-) -> Rate:
-    """Create a rate object from CHEMKIN data.
-
-    Ignores Chebyshev for now...
-
-    :param arrow: The CHEMKIN arrow, indicating whether the reaction is reversible
-    :param coll: The CHEMKIN collider, 'M' or '(+M)', indicating the type of pressure
-        dependence for simple reactions
-    :param arrh: The high-pressure Arrhenius parameters, defaults to None
-    :param arrh0: The low-pressure Arrhenius parameters, defaults to None
-    :param troe: The Troe parameters, defaults to None
-    :param plog: The Plog parameters, defaults to None
-    :return: The rate object
-    """
-    # Assess reversibility based on the arrow
-    arrow = arrow.strip()
-    assert arrow in ("=", "<=>", "=>"), f"Invalid CHEMKIN arrow: {arrow}"
-    is_rev = arrow in ("=", "<=>")
-    # Determine the high and low-pressure Arrhenius constants, if present
-    k = None if arrh is None else ArrheniusFunction(*arrh)
-    k0 = None if arrh0 is None else ArrheniusFunction(*arrh0)
-
-    # If this is a Plog rate, return early
-    # Chebyshev rates are could be handled similarly, if needed
-    if plog is not None:
-        ks = [c[1:] for c in plog]
-        Ps = ([c[0] for c in plog],)
-        return PlogRate(ks=ks, Ps=Ps, k=k, is_rev=is_rev, type_=RateType.PLOG)
-
-    # Otherwise, this is a simple case
-    # Determine the blending function if Troe coefficients are present
-    f = None if troe is None else BlendingFunction(troe, type_=BlendType.TROE)
-
-    # Determine the pressure dependency type from the M collider
-    type_ = RateType.CONSTANT
-    if coll:
-        type_ = RateType.FALLOFF if "(" in coll else RateType.ACTIVATED
-
-    return SimpleRate(k=k, k0=k0, f=f, is_rev=is_rev, type_=type_)
 
 
 def to_old_object(rate: Rate) -> Any:

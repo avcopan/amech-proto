@@ -1,23 +1,43 @@
 """Reaction dataclasses."""
 
 import dataclasses
+import re
+from collections import defaultdict
 
 import pyparsing as pp
+from pyparsing import pyparsing_common as ppc
 
 from . import rate as rate_
+from .rate import BlendingFunction, BlendType, PlogRate, Rate, RateType, SimpleRate
+
 
 # Chemkin parsers
-SPECIES_NAME_START = pp.WordStart(pp.alphas)
-SPECIES_NAME_BODY = pp.Word(pp.printables, exclude_chars="+=<>!)") + ~pp.FollowedBy("+")
-SPECIES_NAME_END = pp.Word(pp.printables, exclude_chars="+=<>!(")
+def number_list_expr(
+    nmin: int | None = None, nmax: int | None = None, delim: str = ""
+) -> pp.core.ParseExpression:
+    """Get a parse expression for a list of numbers.
 
-SPECIES_NAME = pp.Combine(
-    SPECIES_NAME_START + pp.Opt(SPECIES_NAME_BODY) + pp.Opt(SPECIES_NAME_END)
-)
+    :param nmin: The minimum list length (defaults to `None`)
+    :param nmax: The maximum list length (defaults to `nmin` if `None`)
+    :param delim: The delimiter between numbers, defaults to ""
+    :return: The parse expression
+    """
+    nmax = nmin if nmax is None else nmax
+    return pp.delimitedList(ppc.number, delim=delim, min=nmin, max=nmax)
+
+
+SLASH = pp.Suppress(pp.Literal("/"))
 ARROW = pp.Literal("=") ^ pp.Literal("=>") ^ pp.Literal("<=>")
 FALLOFF = pp.Combine(
-    pp.Literal("(") + pp.Literal("+") + pp.Literal("M") + pp.Literal(")"),
+    pp.Literal("(") + pp.Literal("+") + pp.Word(pp.alphanums) + pp.Literal(")"),
     adjacent=False,
+)
+ARRH_PARAMS = number_list_expr(3)
+AUX_KEYWORD = pp.Word(pp.alphanums)
+AUX_PARAMS = SLASH + number_list_expr() + SLASH
+AUX_LINE = pp.Group(AUX_KEYWORD + pp.Optional(AUX_PARAMS))
+RATE_EXPR = (
+    pp.Suppress(...) + ARRH_PARAMS("params") + pp.Group(pp.ZeroOrMore(AUX_LINE))("aux")
 )
 
 
@@ -33,7 +53,7 @@ class Reaction:
 
     reactants: tuple[str, ...]
     products: tuple[str, ...]
-    rate: rate_.Rate | None = None
+    rate: Rate | None = None
     collider: str | None = None
 
     def __post_init__(self):
@@ -48,49 +68,14 @@ class Reaction:
 
 
 # constructors
-def from_equation(eq: str, rate: rate_.Rate, coll: str | None = None) -> Reaction:
-    """Build a Reaction object from an equation string.
+def from_chemkin(rxn_str: str) -> Reaction:
+    """Build a Reaction object from CHEMKIN reaction data.
 
-    :param eq: The CHEMKIN equation
-    :param rate: The reaction rate
-    :param collider: The collider type
+    :param rxn_str: CHEMKIN reaction data
     :return: The reaction object
     """
-    rcts, prds, coll_ = read_chemkin_equation(eq, bare_coll=True)
-    coll = coll if coll is not None else coll_
-    return Reaction(reactants=rcts, products=prds, rate=rate, collider=coll)
-
-
-def from_chemkin(
-    rcts: tuple[str, ...],
-    prds: tuple[str, ...],
-    arrow: str = "=",
-    falloff: str | None = None,
-    arrh: rate_.Params3 | None = None,
-    arrh0: rate_.Params4 | None = None,
-    troe: rate_.Params3or4 | None = None,
-    plog: tuple[rate_.Params4, ...] | None = None,
-) -> Reaction:
-    """Build a Reaction object from CHEMKIN parsing data.
-
-    :param rcts: The CHEMKIN reactants
-    :param prds: The CHEMKIN products
-    :param arrow: The CHEMKIN arrow, indicating whether the reaction is reversible
-    :param falloff: The CHEMKIN falloff term, '(+M)', if present
-    :param arrh: The high-pressure Arrhenius parameters, defaults to None
-    :param arrh0: The low-pressure Arrhenius parameters, defaults to None
-    :param troe: The Troe parameters, defaults to None
-    :param plog: The Plog parameters, defaults to None
-    :return: The reaction object
-    """
-    rcts, prds, coll = extract_collider(rcts, prds)
-    if falloff is not None:
-        assert coll is None, f"Cannot have collider {coll} with falloff {falloff}"
-        coll = falloff
-
-    rate = rate_.from_chemkin(
-        arrow=arrow, coll=coll, arrh=arrh, arrh0=arrh0, troe=troe, plog=plog
-    )
+    rcts, prds, *_ = read_chemkin_equation(rxn_str, bare_coll=True)
+    rate = read_chemkin_rate(rxn_str)
     return Reaction(reactants=tuple(rcts), products=tuple(prds), rate=rate)
 
 
@@ -113,7 +98,7 @@ def products(rxn: Reaction) -> tuple[str, ...]:
     return rxn.products
 
 
-def rate(rxn: Reaction) -> rate_.Rate:
+def rate(rxn: Reaction) -> Rate:
     """Get the rate constant.
 
     :param rxn: A reaction object
@@ -184,16 +169,16 @@ def chemkin_equation(rxn: Reaction) -> str:
     return write_chemkin_equation(rcts, prds, coll=coll)
 
 
-# Chemkin helpers
+# Chemkin equation helpers
 def read_chemkin_equation(
-    eq: str,
+    rxn_str: str,
     trans_dct: dict[str, str] | None = None,
     bare_coll: bool = False,
     tuple_coll: bool = False,
 ) -> tuple[tuple[str, ...], tuple[str, ...], str]:
     """Parse the CHEMKIN equation of a reaction from a string.
 
-    :param eq: The reaction CHEMKIN equation
+    :param rxn_str: CHEMKIN reaction data
     :param trans_dct: Optionally, translate the species names using a dictionary
     :param bare_coll: Return a bare collider, without parentheses?
     :param tuple_coll: Use tuple colliders, for mechanalyzer compatibility? (temporary)
@@ -203,22 +188,31 @@ def read_chemkin_equation(
     def trans_(name):
         return name if trans_dct is None else trans_dct.get(name)
 
-    r_expr = pp.Group(
-        pp.delimitedList(SPECIES_NAME, delim="+")("species")
-        + pp.Opt(FALLOFF)("falloff")
+    # 0. Find the equation
+    rxn_params = number_list_expr(3)
+    rxn_eq = pp.Suppress(...) + pp.Combine(
+        pp.OneOrMore(pp.Word(pp.printables), stop_on=rxn_params), adjacent=False
+    )("eq")
+    res = rxn_eq.parseString(rxn_str)
+    eq = res.get("eq")
+
+    # 1. Find the arrow and split
+    eq_expr = (
+        pp.SkipTo(ARROW)("side1") + ARROW("arrow") + pp.SkipTo(pp.StringEnd())("side2")
     )
-    parser = r_expr("reactants") + ARROW("arrow") + r_expr("products")
-    dct = parser.parseString(eq).asDict()
-    rcts = tuple(map(trans_, dct["reactants"]["species"]))
-    prds = tuple(map(trans_, dct["products"]["species"]))
+    res = eq_expr.parseString(eq)
+    arrow = res.get("arrow")
 
-    rcts, prds, coll = extract_collider(rcts, prds)
-    if "falloff" in dct["reactants"]:
-        falloff = dct["reactants"]["falloff"]
-        assert "falloff" in dct["products"], f"Failed to parse falloff: {eq}"
-        assert coll is None, f"Cannot have collider {coll} with falloff {falloff}"
+    # 2. For each side, find the collider and the reagents
+    rcts, falloff = read_chemkin_equation_side(res.get("side1"))
+    prds, falloff_ = read_chemkin_equation_side(res.get("side2"))
+    assert not (falloff is None) ^ (
+        falloff_ is None
+    ), f"Inconsistent equation: {rxn_str}"
 
-        coll = falloff.replace(" ", "")
+    rcts, prds, coll = extract_collider(rcts, prds, falloff)
+    rcts = tuple(map(trans_, rcts))
+    prds = tuple(map(trans_, prds))
 
     # If requested, remove (+ ) for falloff reactions and return only the bare collider
     if bare_coll:
@@ -228,13 +222,14 @@ def read_chemkin_equation(
     if tuple_coll:
         coll = (coll,)
 
-    return (rcts, prds, coll)
+    return (rcts, prds, coll, arrow)
 
 
 def write_chemkin_equation(
     rcts: tuple[str],
     prds: tuple[str],
     coll: str | None = None,
+    arrow: str = "=",
     trans_dct: dict[str, str] | None = None,
 ) -> str:
     """Write the CHEMKIN equation of a reaction to a string.
@@ -267,7 +262,7 @@ def write_chemkin_equation(
         rcts_str = sep.join([rcts_str, coll])
         prds_str = sep.join([prds_str, coll])
 
-    return " = ".join([rcts_str, prds_str])
+    return f" {arrow} ".join([rcts_str, prds_str])
 
 
 def standardize_chemkin_equation(eq: str) -> str:
@@ -279,21 +274,108 @@ def standardize_chemkin_equation(eq: str) -> str:
     return write_chemkin_equation(*read_chemkin_equation(eq))
 
 
+# Chemkin rate helpers
+def read_chemkin_rate(rxn_str: str) -> Rate:
+    """Read the CHEMKIN rate from a string.
+
+    :param rxn_str: CHEMKIN reaction data
+    :return: The reaction rate object
+    """
+    # Determine reversibility and type from the CHEMKIN equation
+    _, _, coll, arrow = read_chemkin_equation(rxn_str)
+    is_rev = arrow in ("=", "<=>")
+
+    # Define parser for auxiliary data
+    res = RATE_EXPR.parseString(rxn_str).as_dict()
+    params = res.get("params")
+
+    aux_dct = defaultdict(list)
+    for key, *val in res.get("aux"):
+        if key == "PLOG":
+            aux_dct[key].append(val)
+        else:
+            aux_dct[key].extend(val)
+    aux_dct = dict(aux_dct)
+
+    if "PLOG" in aux_dct:
+        return PlogRate(
+            ks=tuple(c[1:] for c in aux_dct["PLOG"]),
+            Ps=tuple(c[0] for c in aux_dct["PLOG"]),
+            k=params,
+            is_rev=is_rev,
+            type_=RateType.PLOG,
+        )
+
+    return SimpleRate(
+        k=params,
+        k0=aux_dct.get("LOW"),
+        f=BlendingFunction(aux_dct.get("TROE"), type_=BlendType.TROE),
+        is_rev=is_rev,
+        type_=(
+            RateType.CONSTANT
+            if coll is None
+            else RateType.FALLOFF
+            if "(" in coll
+            else RateType.ACTIVATED
+        ),
+    )
+
+
+# Extra helpers
 def extract_collider(
-    rcts: tuple[str, ...], prds: tuple[str, ...]
+    rcts: tuple[str, ...],
+    prds: tuple[str, ...],
+    falloff: str | None = None,
 ) -> tuple[tuple[str, ...], tuple[str, ...], str | None]:
     """Extract a collider from a list of reactants and products.
 
     :param rcts: The reactant names
     :param prds: The product names
+    :param falloff: A falloff string, if present
     :return: The reactants and products (without collider), and the collider
     """
     colliders = ("M", "He", "Ne", "Ar")
 
-    coll = None
+    coll = falloff
     if rcts[-1] == prds[-1] and rcts[-1] in colliders:
+        assert falloff is None, f"Collider inconsistency: {falloff} {rcts} {prds}"
         coll = rcts[-1]
         rcts = rcts[:-1]
         prds = prds[:-1]
 
     return tuple(rcts), tuple(prds), coll
+
+
+def read_chemkin_equation_side(side: str) -> tuple[list[str], str | None]:
+    """Read one side of a CHEMKIN equation.
+
+    :param side: One side of a CHEMKIN equation
+    :return: The reagent names and the collider, if any
+    """
+    # Use pyparsing to split off the falloff value, if present
+    end = FALLOFF | pp.StringEnd()
+    side_expr = (
+        pp.SkipTo(end)("side") + pp.Optional(FALLOFF)("falloff") + pp.StringEnd()
+    )
+    res = side_expr.parseString(side)
+    side = res.get("side")
+    coll = res.get("falloff")
+    # Use re to split the list of species names
+    names = re.split(r"\+(?!\+|$)", side)
+    return names, coll
+
+
+def rate_params_expr(
+    key: str, nmin: int, nmax: int | None = None
+) -> pp.core.ParseExpression:
+    """Get parse expression for rate parameters after a CHEMKIN reaction.
+
+    :param key: The keyword for these rate parameters
+    :param nmin: The minimum parameter list length
+    :param nmax: The maximum parameter list length (defaults to `nmin` if `None`)
+    :return: The parse expression
+    """
+    keyword = pp.Suppress(pp.CaselessLiteral(key))
+    slash = pp.Suppress(pp.Literal("/"))
+    params = number_list_expr(nmin, nmax=nmax, delim="")
+    return keyword + slash + params + slash

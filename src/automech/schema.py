@@ -77,6 +77,7 @@ def species_table(
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
+    keep_extra: bool = True,
 ) -> polars.DataFrame:
     """Validate a species data frame.
 
@@ -94,7 +95,7 @@ def species_table(
     df = df.rename({k: str.lower(k) for k in df.columns})
     assert (
         Species.amchi in df or Species.smiles in df
-    ), f"Must have either 'chi' or 'smi' column: {df}"
+    ), f"Must have either 'amchi' or 'smiles' column: {df}"
 
     if Species.amchi not in df:
         df = df_.map_(df, Species.smiles, Species.amchi, automol.smiles.amchi)
@@ -136,13 +137,11 @@ def species_table(
     for model in models:
         df = model.validate(df)
 
-    cols = list(itertools.chain(*(model.to_schema().columns for model in models)))
-    cols.extend(c for c in df.columns if c not in cols)
-    return df.select(cols)
+    return table_with_columns_from_models(df, models=models, keep_extra=keep_extra)
 
 
 def reaction_table(
-    df: polars.DataFrame, models: Sequence[Model] = ()
+    df: polars.DataFrame, models: Sequence[Model] = (), keep_extra: bool = True
 ) -> polars.DataFrame:
     """Validate a reactions data frame.
 
@@ -158,6 +157,20 @@ def reaction_table(
     for model in models:
         df = model.validate(df)
 
+    return table_with_columns_from_models(df, models=models, keep_extra=keep_extra)
+
+
+def table_with_columns_from_models(
+    df: polars.DataFrame, models: Sequence[Model] = (), keep_extra: bool = True
+) -> polars.DataFrame:
+    """Return a table with columns selected from models.
+
+    :param df: The dataframe
+    :param models: The models, defaults to ()
+    :param drop_extra: Keep extra columns that aren't in the models?
+    :return: The dataframe selection
+    """
     cols = list(itertools.chain(*(model.to_schema().columns for model in models)))
-    cols.extend(c for c in df.columns if c not in cols)
+    if keep_extra:
+        cols.extend(c for c in df.columns if c not in cols)
     return df.select(cols)

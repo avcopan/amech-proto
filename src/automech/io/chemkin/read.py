@@ -1,18 +1,39 @@
 """Functions for reading CHEMKIN-formatted files."""
 
+import itertools
 import os
 import re
 from pathlib import Path
 
+import more_itertools as mit
 import polars
 import pyparsing as pp
-from pyparsing import pyparsing_common as ppc
 
 from ... import data, schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
 from ...schema import Reaction, ReactionRate, Species
 from ...util import df_
+
+
+class KeyWord:
+    # Blocks
+    ELEMENTS = "ELEMENTS"
+    THERM = "THERM"
+    SPECIES = "SPECIES"
+    REACTIONS = "REACTIONS"
+    END = "END"
+    # Units
+    # # Energy (E) units
+    CAL_MOLE = "CAL/MOLE"
+    KCAL_MOLE = "KCAL/MOLE"
+    JOULES_MOLE = "JOULES/MOLE"
+    KJOULES_MOLE = "KJOULES/MOLE"
+    KELVINS = "KELVINS"
+    # # Prefactor (A) units
+    MOLES = "MOLES"
+    MOLECULES = "MOLECULES"
+
 
 # generic
 COMMENT_REGEX = re.compile(r"!.*$", flags=re.M)
@@ -24,19 +45,15 @@ COMMENTS = pp.ZeroOrMore(COMMENT)
 
 # units
 E_UNIT = pp.Opt(
-    pp.CaselessKeyword("CAL/MOLE")
-    ^ pp.CaselessKeyword("KCAL/MOLE")
-    ^ pp.CaselessKeyword("JOULES/MOLE")
-    ^ pp.CaselessKeyword("KJOULES/MOLE")
-    ^ pp.CaselessKeyword("KELVINS")
+    pp.CaselessKeyword(KeyWord.CAL_MOLE)
+    ^ pp.CaselessKeyword(KeyWord.KCAL_MOLE)
+    ^ pp.CaselessKeyword(KeyWord.JOULES_MOLE)
+    ^ pp.CaselessKeyword(KeyWord.KJOULES_MOLE)
+    ^ pp.CaselessKeyword(KeyWord.KELVINS)
 )
-A_UNIT = pp.Opt(pp.CaselessKeyword("MOLES") ^ pp.CaselessKeyword("MOLECULES"))
-
-# reactions
-SPECIES_NAME = data.reac.SPECIES_NAME
-ARROW = data.reac.ARROW
-FALLOFF = data.reac.FALLOFF
-DUP = pp.Opt(pp.CaselessKeyword("DUP") ^ pp.CaselessKeyword("DUPLICATE"))
+A_UNIT = pp.Opt(
+    pp.CaselessKeyword(KeyWord.MOLES) ^ pp.CaselessKeyword(KeyWord.MOLECULES)
+)
 
 
 # mechanism
@@ -63,41 +80,22 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     :param out: Optionally, write the output to this file path
     :return: The reactions dataframe
     """
-    # Build the parser
-    r_expr = pp.Group(
-        pp.delimitedList(SPECIES_NAME, delim="+")("species")
-        + pp.Opt(FALLOFF)("falloff")
-    )
-    eq_expr = r_expr("reactants") + ARROW("arrow") + r_expr("products")
-    rxn_expr = (
-        eq_expr
-        + number_list_expr(3)("arrh")
-        + pp.Opt(rate_params_expr("LOW", 3))("arrh0")
-        + pp.Opt(rate_params_expr("TROE", 3, 4))("troe")
-        + pp.Opt(pp.OneOrMore(pp.Group(rate_params_expr("PLOG", 4))))("plog")
-        + DUP("dup")
-    )
-    parser = pp.Suppress(...) + pp.OneOrMore(pp.Group(rxn_expr))
+
+    def _is_reaction_line(string: str) -> bool:
+        return re.search(r"\d$", string.strip())
 
     # Do the parsing
     rxn_block_str = reactions_block(inp, comments=False)
-    names = []
-    rates = []
-    for res in parser.parseString(rxn_block_str):
-        rxn = data.reac.from_chemkin(
-            rcts=list(res["reactants"]["species"]),
-            prds=list(res["products"]["species"]),
-            arrow=res["arrow"],
-            falloff=res.get("falloff", ""),
-            arrh=res.get("arrh", None),
-            arrh0=res.get("arrh0", None),
-            troe=res.get("arrh0", None),
-        )
+    line_iter = itertools.dropwhile(
+        lambda s: not _is_reaction_line(s), rxn_block_str.splitlines()
+    )
+    rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
 
-        names.append(data.reac.equation(rxn))
-        rates.append(data.reac.rate(rxn))
+    rxns = list(map(data.reac.from_chemkin, rxn_strs))
+    eqs = list(map(data.reac.equation, rxns))
+    rates = list(map(data.reac.rate, rxns))
 
-    data_dct = {Reaction.eq: names, ReactionRate.rate: rates}
+    data_dct = {Reaction.eq: eqs, ReactionRate.rate: rates}
     rxn_df = polars.DataFrame(
         data=data_dct, schema=schema.types([Reaction, ReactionRate])
     )
@@ -114,7 +112,7 @@ def reactions_block(inp: str, comments: bool = True) -> str:
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The block
     """
-    return block(inp, "REACTIONS", comments=comments)
+    return block(inp, KeyWord.REACTIONS, comments=comments)
 
 
 def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
@@ -124,14 +122,16 @@ def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
     :param default: Return default values, if missing?
     :return: The units for E and A, respectively
     """
-    e_default = "CAL/MOL" if default else None
-    a_default = "MOLES" if default else None
+    e_default = KeyWord.CAL_MOLE if default else None
+    a_default = KeyWord.MOLES if default else None
 
     rxn_block_str = reactions_block(inp, comments=False)
     parser = E_UNIT("e_unit") + A_UNIT("a_unit")
-    unit_dct = parser.parseString(rxn_block_str).as_dict()
-    e_unit = unit_dct["e_unit"].upper() if "e_unit" in unit_dct else e_default
-    a_unit = unit_dct["a_unit"].upper() if "a_unit" in unit_dct else a_default
+    res = parser.parseString(rxn_block_str).as_dict()
+    e_unit = res.get("e_unit", e_default)
+    a_unit = res.get("a_unit", a_default)
+    e_unit = e_unit.upper() if isinstance(e_unit, str) else None
+    a_unit = a_unit.upper() if isinstance(a_unit, str) else None
     return e_unit, a_unit
 
 
@@ -143,11 +143,12 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     :param out: Optionally, write the output to this file path
     :return: A dictionary mapping species onto their comments
     """
+    species_name = pp.Word(pp.printables)
     word = pp.Word(pp.printables, exclude_chars=":")
     value = pp.Group(word + pp.Suppress(":") + word)
     values = pp.ZeroOrMore(value)
     comment_values = COMMENT_START + values + COMMENT_END
-    entry = SPECIES_NAME("name") + comment_values("values")  # + pp.Suppress(COMMENTS)
+    entry = species_name("name") + comment_values("values")
     parser = pp.Suppress(...) + pp.OneOrMore(pp.Group(entry))
 
     spc_block_str = species_block(inp, comments=True)
@@ -170,7 +171,7 @@ def species_block(inp: str, comments: bool = True) -> str:
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The block
     """
-    return block(inp, "SPECIES", comments=comments)
+    return block(inp, KeyWord.SPECIES, comments=comments)
 
 
 def species_names(inp: str) -> list[str]:
@@ -179,7 +180,7 @@ def species_names(inp: str) -> list[str]:
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The species
     """
-    parser = pp.OneOrMore(SPECIES_NAME)
+    parser = pp.OneOrMore(pp.Word(pp.printables))
     spc_block_str = species_block(inp, comments=False)
     return parser.parseString(spc_block_str).asList()
 
@@ -191,7 +192,7 @@ def therm_block(inp: str) -> str:
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The block
     """
-    return block(inp, "THERM")
+    return block(inp, KeyWord.THERM)
 
 
 # generic
@@ -206,7 +207,7 @@ def block(inp: str, key: str, comments: bool = False) -> str:
     inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     block_par = pp.Suppress(...) + pp.QuotedString(
-        key, end_quote_char="END", multiline=True
+        key, end_quote_char=KeyWord.END, multiline=True
     )
     (block_str,) = block_par.parseString(inp).asList()
     # Remove comments, if requested
@@ -236,34 +237,3 @@ def all_comments(inp: str) -> list[str]:
     inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
     return re.findall(COMMENT_REGEX, inp)
-
-
-# helpers
-def number_list_expr(
-    nmin: int, nmax: int | None = None, delim: str = ""
-) -> pp.core.ParseExpression:
-    """Get a parse expression for a list of numbers.
-
-    :param nmin: The minimum list length
-    :param nmax: The maximum list length (defaults to `nmin` if `None`)
-    :param delim: The delimiter between numbers, defaults to ""
-    :return: The parse expression
-    """
-    nmax = nmin if nmax is None else nmax
-    return pp.delimitedList(ppc.number, delim=delim, min=nmin, max=nmax)
-
-
-def rate_params_expr(
-    key: str, nmin: int, nmax: int | None = None
-) -> pp.core.ParseExpression:
-    """Get parse expression for rate parameters after a CHEMKIN reaction.
-
-    :param key: The keyword for these rate parameters
-    :param nmin: The minimum parameter list length
-    :param nmax: The maximum parameter list length (defaults to `nmin` if `None`)
-    :return: The parse expression
-    """
-    keyword = pp.Suppress(pp.CaselessLiteral(key))
-    slash = pp.Suppress(pp.Literal("/"))
-    params = number_list_expr(nmin, nmax=nmax, delim="")
-    return keyword + slash + params + slash

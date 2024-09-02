@@ -14,17 +14,17 @@ from ..chemkin import read as chemkin_read
 
 
 def mechanism(
-    inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
+    rxn_inp: str, spc_inp: str, rxn_out: str | None = None, spc_out: str | None = None
 ) -> Mechanism:
-    """Extract the mechanism from RMG files.
+    """Extract the mechanism from MechAnalyzer files.
 
-    :param inp: An RMG mechanism (CHEMKIN format), as a file path or string
-    :param spc_inp: An RMG species dictionary, as a file path or string
+    :param rxn_inp: A mechanism (CHEMKIN format), as a file path or string
+    :param spc_inp: A Mechanalyzer species dictionary, as a file path or string
     :param out: Optionally, write the output to this file path (reactions)
     :param spc_out: Optionally, write the output to this file path (species)
     :return: The mechanism dataclass
     """
-    rxn_df = chemkin_read.reactions(inp, out=out)
+    rxn_df = chemkin_read.reactions(rxn_inp, out=rxn_out)
     spc_df = species(spc_inp, out=spc_out)
     return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
 

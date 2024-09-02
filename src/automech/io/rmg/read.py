@@ -13,12 +13,12 @@ from tqdm.auto import tqdm
 from ... import schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...data.reac import SPECIES_NAME
 from ...schema import Species
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
 MULTIPLICITY = pp.CaselessLiteral("multiplicity") + ppc.integer("mult")
+SPECIES_NAME = pp.Word(pp.printables)
 SPECIES_ENTRY = (
     SPECIES_NAME("species") + pp.Opt(MULTIPLICITY) + RMG_ADJACENCY_LIST("adj_list")
 )
@@ -26,7 +26,7 @@ SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 
 def mechanism(
-    inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
+    rxn_inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
 ) -> Mechanism:
     """Extract the mechanism from RMG files.
 
@@ -36,7 +36,7 @@ def mechanism(
     :param spc_out: Optionally, write the output to this file path (species)
     :return: The mechanism dataclass
     """
-    rxn_df = chemkin_read.reactions(inp, out=out)
+    rxn_df = chemkin_read.reactions(rxn_inp, out=out)
     spc_df = species(spc_inp, out=spc_out)
     return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
 

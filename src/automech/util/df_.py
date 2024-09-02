@@ -40,7 +40,11 @@ def to_csv(
     :param path: The path to the CSV file
     :param quote_char: Optionally, override the default quote character
     """
-    kwargs = {} if quote_char is None else {"quote_char": quote_char}
+    kwargs = (
+        {}
+        if quote_char is None
+        else {"quote_char": quote_char, "quote_style": "non_numeric"}
+    )
     if path is not None:
         path: Path = Path(path)
         path = path if path.suffix == ".csv" else path.with_suffix(".csv")
