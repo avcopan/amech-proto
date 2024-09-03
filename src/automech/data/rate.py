@@ -6,10 +6,13 @@ Eventually, we will want to add a "Raw" rate type with k(T,P) values stored in a
 import abc
 import dataclasses
 import enum
+from collections import defaultdict
 from collections.abc import Sequence
 from typing import Any
 
 import numpy
+import pyparsing as pp
+from pyparsing import pyparsing_common as ppc
 
 
 class RateType(str, enum.Enum):
@@ -454,7 +457,121 @@ def plog_params_dict(rate: Rate, lt: bool = True) -> dict[float, ArrheniusFuncti
     return dict(zip(plog_pressures(rate), plog_params(rate, lt=lt), strict=True))
 
 
-# legacy
+# I/O
+def chemkin_string(rate: Rate) -> str:
+    """Write the CHEMKIN rate to a string.
+
+    :param rate_: The reaction rate object
+    :return: CHEMKIN rate string
+    """
+    # Write the top line
+    top_k = arrhenius_function(rate)
+    top_line = arrhenius_params_string(top_k)
+    lines = [top_line]
+
+    # Add any auxiliary lines
+    if type_(rate) == RateType.ACTIVATED:
+        k_hi = high_p_arrhenius_function(rate)
+        lines.append(chemkin_aux_line("HIGH", arrhenius_params_string(k_hi)))
+
+    if type_(rate) == RateType.FALLOFF:
+        k_lo = low_p_arrhenius_function(rate)
+        lines.append(chemkin_aux_line("LOW", arrhenius_params_string(k_lo)))
+
+    if type_(rate) == RateType.PLOG:
+        ks = plog_arrhenius_functions(rate)
+        ps = plog_pressures(rate)
+        plog_lines = [
+            chemkin_aux_line("PLOG", [write_number(p), arrhenius_params_string(k)])
+            for p, k in zip(ps, ks, strict=True)
+        ]
+        lines.extend(plog_lines)
+
+    if blend_type(rate) == BlendType.TROE:
+        coeffs = blend_coeffs(rate)
+        lines.append(chemkin_aux_line("TROE", write_numbers(coeffs)))
+
+    return "\n".join(lines)
+
+
+def from_chemkin_string(
+    rate_str: str, coll: str | None = None, arrow: str = "="
+) -> Rate:
+    """Read the CHEMKIN rate from a string.
+
+    :param rxn_str: CHEMKIN rate string
+    :return: The reaction rate object
+    """
+    # Parse the string
+    rate_expr = chemkin_rate_expr()
+    res = rate_expr.parseString(rate_str).as_dict()
+
+    # Gather auxiliary data
+    aux_dct = defaultdict(list)
+    for key, *val in res.get("aux"):
+        if key == "PLOG":
+            aux_dct[key].append(val)
+        else:
+            aux_dct[key].extend(val)
+    aux_dct = dict(aux_dct)
+
+    # Pre-process P-Log data
+    plog_ks = plog_ps = None
+    if "PLOG" in aux_dct:
+        plog_ks = tuple(c[1:] for c in aux_dct["PLOG"])
+        plog_ps = tuple(c[0] for c in aux_dct["PLOG"])
+
+    # Pre-process blending function data
+    f = None
+    if "TROE" in aux_dct:
+        f = (BlendType.TROE, aux_dct.get("TROE"))
+
+    # Call central constructor
+    return from_data(
+        k=res.get("params"),
+        k0=aux_dct.get("LOW"),
+        f=f,
+        plog_ks=plog_ks,
+        plog_ps=plog_ps,
+        type_=(
+            None
+            if coll is None
+            else RateType.FALLOFF
+            if "(" in coll
+            else RateType.ACTIVATED
+        ),
+        is_rev=arrow in ("=", "<=>"),
+    )
+
+
+# Draft
+@dataclasses.dataclass
+class ChebRate(Rate):
+    """Chebyshev reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
+
+    :param T0: The minimum temperature [K] for the Chebyshev fit
+    :param T_: The maximum temperature [K] for the Chebyshev fit
+    :param P0: The minimum pressure [K] for the Chebyshev fit
+    :param P_: The maximum pressure [K] for the Chebyshev fit
+    :param coeffs: The Chebyshev expansion coefficients
+    :param is_rev: Is this a reversible reaction?
+    """
+
+    T0: float
+    T_: float
+    P0: float
+    P_: float
+    coeffs: tuple[tuple[float, ...], ...]
+    is_rev: bool = True
+    type_: str = RateType.CHEB
+
+    def __post_init__(self):
+        """Initialize attributes."""
+        self.type_ = RateType(self.type_)
+        assert self.type_ == RateType.CHEB
+
+
+# Legacy
 def to_old_object(rate: Rate) -> Any:
     """Convert a new rate object to an old one.
 
@@ -489,34 +606,22 @@ def to_old_object(rate: Rate) -> Any:
     return rxn_params_obj
 
 
-# draft
-@dataclasses.dataclass
-class ChebRate(Rate):
-    """Chebyshev reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
-
-    :param T0: The minimum temperature [K] for the Chebyshev fit
-    :param T_: The maximum temperature [K] for the Chebyshev fit
-    :param P0: The minimum pressure [K] for the Chebyshev fit
-    :param P_: The maximum pressure [K] for the Chebyshev fit
-    :param coeffs: The Chebyshev expansion coefficients
-    :param is_rev: Is this a reversible reaction?
-    """
-
-    T0: float
-    T_: float
-    P0: float
-    P_: float
-    coeffs: tuple[tuple[float, ...], ...]
-    is_rev: bool = True
-    type_: str = RateType.CHEB
-
-    def __post_init__(self):
-        """Initialize attributes."""
-        self.type_ = RateType(self.type_)
-        assert self.type_ == RateType.CHEB
-
-
 # Helpers
+def chemkin_aux_line(
+    key: str, val: str | Sequence[str], key_width: int = 5, indent: int = 4
+) -> str:
+    """Format a line of auxiliary CHEMKIN reaction data.
+
+    :param key: The key, e.g. 'PLOG'
+    :param val: The value(s), e.g. '5.000  8500' or ['5.000', '8500']
+    :param key_width: The key column width, defaults to 5
+    :param indent: The indentation, defaults to 4
+    :return: The line
+    """
+    val = val if isinstance(val, str) else " ".join(val)
+    return " " * indent + f"{key:<{key_width}} /{val}/"
+
+
 def write_numbers(
     nums: Sequence[float], digits: int = 4, always_sci: Sequence[bool] | bool = False
 ) -> str:
@@ -559,3 +664,37 @@ def write_number(num: float | int, digits: int = 4, always_sci: bool = False) ->
 
     decimals = max(0, digits - exp - 1)
     return f"{num:>{max_width}.{decimals}f}"
+
+
+def chemkin_rate_expr() -> pp.ParseExpression:
+    """Get the parse expression for chemkin rates."""
+    return RATE_EXPR
+
+
+def number_list_expr(
+    nmin: int | None = None, nmax: int | None = None, delim: str = ""
+) -> pp.ParseExpression:
+    """Get a parse expression for a list of numbers.
+
+    :param nmin: The minimum list length (defaults to `None`)
+    :param nmax: The maximum list length (defaults to `nmin` if `None`)
+    :param delim: The delimiter between numbers, defaults to ""
+    :return: The parse expression
+    """
+    nmax = nmin if nmax is None else nmax
+    return pp.delimitedList(ppc.number, delim=delim, min=nmin, max=nmax)
+
+
+SLASH = pp.Suppress(pp.Literal("/"))
+ARROW = pp.Literal("=") ^ pp.Literal("=>") ^ pp.Literal("<=>")
+FALLOFF = pp.Combine(
+    pp.Literal("(") + pp.Literal("+") + pp.Word(pp.alphanums) + pp.Literal(")"),
+    adjacent=False,
+)
+ARRH_PARAMS = number_list_expr(3)
+AUX_KEYWORD = pp.Word(pp.alphanums)
+AUX_PARAMS = SLASH + number_list_expr() + SLASH
+AUX_LINE = pp.Group(AUX_KEYWORD + pp.Optional(AUX_PARAMS))
+RATE_EXPR = (
+    pp.Suppress(...) + ARRH_PARAMS("params") + pp.Group(pp.ZeroOrMore(AUX_LINE))("aux")
+)
