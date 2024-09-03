@@ -91,7 +91,7 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     )
     rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
 
-    rxns = list(map(data.reac.from_chemkin, rxn_strs))
+    rxns = list(map(data.reac.from_chemkin_string, rxn_strs))
     eqs = list(map(data.reac.equation, rxns))
     rates = list(map(data.reac.rate, rxns))
 
