@@ -97,6 +97,15 @@ def species_table(
         Species.amchi in df or Species.smiles in df
     ), f"Must have either 'amchi' or 'smiles' column: {df}"
 
+    # Sanitize SMILES, which may have things like 'singlet[CH2]'
+    spin_smi_dct = {"singlet": 0, "triplet": 2}
+    if Species.smiles in df:
+        for spin_type in spin_smi_dct:
+            df = df.with_columns(
+                polars.col(Species.smiles).str.contains(spin_type).alias(spin_type)
+            )
+            df = df.with_columns(polars.col(Species.smiles).str.replace(spin_type, ""))
+
     if Species.amchi not in df:
         df = df_.map_(df, Species.smiles, Species.amchi, automol.smiles.amchi)
 
@@ -127,6 +136,15 @@ def species_table(
                 dtype=dt,
                 dct=spin_dct,
             )
+
+    for spin_type, spin_val in spin_smi_dct.items():
+        if spin_type in df:
+            df = df.with_columns(
+                spin=polars.when(polars.col(spin_type))
+                .then(spin_val)
+                .otherwise(polars.col(Species.spin))
+            )
+            df = df.drop(spin_type)
 
     if Species.charge not in df:
         dt = dt_dct[Species.charge]
