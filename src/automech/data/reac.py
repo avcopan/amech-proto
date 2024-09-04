@@ -176,8 +176,8 @@ def from_chemkin_string(rxn_str: str) -> Reaction:
     :param rxn_str: CHEMKIN reaction data
     :return: The reaction object
     """
-    rcts, prds, coll, arrow = read_chemkin_equation(rxn_str)
-    rate = rt_.from_chemkin_string(rxn_str, coll=coll, arrow=arrow)
+    rcts, prds, _, arrow = read_chemkin_equation(rxn_str)
+    rate = rt_.from_chemkin_string(rxn_str, is_rev=(arrow in ("=", "<=>")))
     return Reaction(reactants=tuple(rcts), products=tuple(prds), rate=rate)
 
 

@@ -24,18 +24,26 @@ class MASpecies(Model):
 
 
 def mechanism(
-    mech: Mechanism, rxn_out: str | None = None, spc_out: str | None = None
-) -> tuple[dict, pandas.DataFrame]:
+    mech: Mechanism,
+    rxn_out: str | None = None,
+    spc_out: str | None = None,
+    as_chemkin_string: bool = True,  # Change default to False when implemented
+) -> tuple[str | dict, pandas.DataFrame]:
     """Write mechanism to MechAnalyzer format.
 
     :param mech: A mechanism
     :param rxn_out: Optionally, write the output to this file path (reactions)
     :param spc_out: Optionally, write the output to this file path (species)
-    :return: MechaAnalyzer reaction dictionary and species dataframes
+    :param as_chemkin_string: Return the reactions as a CHEMKIN string, instead of a
+        MechAnalyzer reaction parameter dictionary?
+    :return: MechaAnalyzer reaction dictionary (or CHEMKIN string) and species dataframe
     """
-    chemkin_write.mechanism(mech, out=rxn_out)
-    # spc_df = species(mech, out=spc_out)
-    # print(spc_df)
+    mech_str = chemkin_write.mechanism(mech, out=rxn_out)
+    spc_df = species(mech, out=spc_out)
+    if as_chemkin_string:
+        return mech_str, spc_df
+    else:
+        raise NotImplementedError("Writing to rxn_params_dct not yet implemented!")
 
 
 def species(mech: Mechanism, out: str | None = None) -> pandas.DataFrame:
@@ -48,6 +56,9 @@ def species(mech: Mechanism, out: str | None = None) -> pandas.DataFrame:
     # Write species
     spc_df = mech_species(mech)
     spc_df = df_.map_(spc_df, Species.amchi, MASpecies.inchi, automol.amchi.chi_)
+    spc_df = df_.map_(
+        spc_df, MASpecies.inchi, MASpecies.inchikey, automol.chi.inchi_key
+    )
     spc_df = df_.map_(
         spc_df,
         MASpecies.inchi,
