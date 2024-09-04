@@ -1,6 +1,7 @@
 """Functions for writing CHEMKIN-formatted files."""
 
 import itertools
+from pathlib import Path
 
 import automol
 
@@ -20,7 +21,12 @@ def mechanism(mech: Mechanism, out: str | None = None) -> str:
     :return: The CHEMKIN mechanism as a string
     """
     blocks = [elements_block(mech), species_block(mech), reactions_block(mech)]
-    return "\n\n\n".join(blocks)
+    mech_str = "\n\n\n".join(blocks)
+    if out is not None:
+        out: Path = Path(out)
+        out.write_text(mech_str)
+
+    return mech_str
 
 
 def elements_block(mech: Mechanism) -> str:
@@ -43,7 +49,12 @@ def species_block(mech: Mechanism) -> str:
     :return: The species block string
     """
     spc_df = mech_species(mech)
-    spc_strs = spc_df[Species.name].to_list()
+    name_width = 1 + spc_df[Species.name].str.len_chars().max()
+    smi_width = 1 + spc_df[Species.smiles].str.len_chars().max()
+    spc_strs = [
+        f"{n:<{name_width}} ! SMILES: {s:<{smi_width}} AMChI: {c}"
+        for n, s, c in spc_df.select(Species.name, Species.smiles, Species.amchi).rows()
+    ]
     return block(KeyWord.SPECIES, spc_strs)
 
 

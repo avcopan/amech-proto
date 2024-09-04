@@ -1,32 +1,70 @@
 """Test automech.io functions."""
 
+import tempfile
 from pathlib import Path
+
+import pytest
 
 import automech
 
+DATA_PATH = Path(__file__).parent / "data"
+TEMP_PATH = tempfile.gettempdir()
 
-def test__io__chemkin(data_directory_path):
-    """Test automech.io.chemkin."""
-    mech_path = Path(data_directory_path) / "butane.dat"
+
+def check_counts(mech, ref_rcount, ref_scount):
+    """Check that the reaction and species counts are correct.
+
+    :param mech: A mechanism object
+    :param ref_rcount: The correct reaction count
+    :param ref_scount: The correct species count
+    """
+    rcount = automech.reaction_count(mech)
+    scount = automech.species_count(mech)
+    assert rcount == ref_rcount, f"{rcount} != {ref_rcount}"
+    assert scount == ref_scount, f"{scount} != {ref_scount}"
+
+
+@pytest.mark.parametrize(
+    "mech_file_name,rcount,scount",
+    [
+        ("butane.dat", 101, 76),
+        ("LLNL_C2H4_mech.dat", 26, 31),
+    ],
+)
+def test__chemkin(mech_file_name, rcount, scount):
+    """Test automech.io.chemkin.read."""
+    # Read
+    mech_path = Path(DATA_PATH) / mech_file_name
     mech = automech.io.chemkin.read.mechanism(mech_path)
-    print(mech_path)
     print(mech)
+    check_counts(mech, ref_rcount=rcount, ref_scount=scount)
+
+    # Write
+    out_mech_path = Path(TEMP_PATH) / mech_file_name
+    mech_str = automech.io.chemkin.write.mechanism(mech, out=out_mech_path)
+    print(mech_str)
+    #   - Check the string output
+    mech = automech.io.chemkin.read.mechanism(mech_str)
+    check_counts(mech, ref_rcount=rcount, ref_scount=scount)
+    #   - Check the file output
+    mech = automech.io.chemkin.read.mechanism(out_mech_path)
+    check_counts(mech, ref_rcount=rcount, ref_scount=scount)
 
 
-def test__io__mechanalyzer(data_directory_path):
+def test__mechanalyzer__read():
     """Test automech.io.mechanalyzer."""
-    rxn_path = Path(data_directory_path) / "propyl.dat"
-    spc_path = Path(data_directory_path) / "propyl_species.csv"
+    rxn_path = Path(DATA_PATH) / "propyl.dat"
+    spc_path = Path(DATA_PATH) / "propyl_species.csv"
     mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
     print(rxn_path)
     print(spc_path)
     print(mech)
 
 
-def test__io__rmg(data_directory_path):
+def test__rmg__read():
     """Test automech.io.rmg."""
-    rxn_path = Path(data_directory_path) / "cyclopentene.inp"
-    spc_path = Path(data_directory_path) / "cyclopentene_species.txt"
+    rxn_path = Path(DATA_PATH) / "cyclopentene.inp"
+    spc_path = Path(DATA_PATH) / "cyclopentene_species.txt"
     mech = automech.io.rmg.read.mechanism(rxn_path, spc_path)
     print(rxn_path)
     print(spc_path)
@@ -34,6 +72,7 @@ def test__io__rmg(data_directory_path):
 
 
 if __name__ == "__main__":
-    test__io__chemkin("/home/avcopan/code/amech-proto/src/automech/test/data")
-    test__io__mechanalyzer("/home/avcopan/code/amech-proto/src/automech/test/data")
-    test__io__rmg("/home/avcopan/code/amech-proto/src/automech/test/data")
+    # test__chemkin__read("butane.dat", 101, 76)
+    test__chemkin("LLNL_C2H4_mech.dat", 26, 31)
+    # test__mechanalyzer__read("/home/avcopan/code/amech-proto/src/automech/test/data")
+    # test__rmg__read("/home/avcopan/code/amech-proto/src/automech/test/data")
