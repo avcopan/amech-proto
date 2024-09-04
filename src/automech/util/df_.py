@@ -47,7 +47,6 @@ def to_csv(
     )
     if path is not None:
         path: Path = Path(path)
-        path = path if path.suffix == ".csv" else path.with_suffix(".csv")
         df.write_csv(path, **kwargs)
 
 

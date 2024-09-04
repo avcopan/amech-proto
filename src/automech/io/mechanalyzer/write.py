@@ -1,5 +1,7 @@
 """Functions for writing Mechanalyzer-formatted files."""
 
+import io
+
 import automol
 import pandas
 import polars
@@ -27,30 +29,35 @@ def mechanism(
     mech: Mechanism,
     rxn_out: str | None = None,
     spc_out: str | None = None,
-    as_chemkin_string: bool = True,  # Change default to False when implemented
-) -> tuple[str | dict, pandas.DataFrame]:
+    string: bool = True,  # Change default to False when implemented
+) -> tuple[str | dict, str | pandas.DataFrame]:
     """Write mechanism to MechAnalyzer format.
 
     :param mech: A mechanism
     :param rxn_out: Optionally, write the output to this file path (reactions)
     :param spc_out: Optionally, write the output to this file path (species)
-    :param as_chemkin_string: Return the reactions as a CHEMKIN string, instead of a
-        MechAnalyzer reaction parameter dictionary?
+    :param string: Return as Mechanalyzer CHEMKIN and CSV strings, instead of a reaction
+        dictionary and species dataframe?
     :return: MechaAnalyzer reaction dictionary (or CHEMKIN string) and species dataframe
     """
     mech_str = chemkin_write.mechanism(mech, out=rxn_out)
-    spc_df = species(mech, out=spc_out)
-    if as_chemkin_string:
-        return mech_str, spc_df
+    spc_ret = species(mech, out=spc_out, string=string)
+    if string:
+        return mech_str, spc_ret
     else:
         raise NotImplementedError("Writing to rxn_params_dct not yet implemented!")
 
 
-def species(mech: Mechanism, out: str | None = None) -> pandas.DataFrame:
+def species(
+    mech: Mechanism,
+    out: str | None = None,
+    string: bool = True,  # Change default to False when implemented
+) -> str | pandas.DataFrame:
     """Write the species in a mechanism to a MechAnalyzer species table.
 
     :param mech: A mechanism
     :param out: Optionally, write the output to this file path (species)
+    :param string: Return as Mechanalyzer CSV string, instead of a species dataframe?
     :return: A MechAnalyzer species dataframe
     """
     # Write species
@@ -59,7 +66,7 @@ def species(mech: Mechanism, out: str | None = None) -> pandas.DataFrame:
     spc_df = df_.map_(
         spc_df, MASpecies.inchi, MASpecies.inchikey, automol.chi.inchi_key
     )
-    spc_df = df_.map_(
+    spc_df: polars.DataFrame = df_.map_(
         spc_df,
         MASpecies.inchi,
         MASpecies.canon_enant_ich,
@@ -72,4 +79,11 @@ def species(mech: Mechanism, out: str | None = None) -> pandas.DataFrame:
     if out is not None:
         df_.to_csv(spc_df, out, quote_char="'")
 
-    return spc_df.to_pandas()
+    spc_ret = spc_df.to_pandas()
+    if string:
+        spc_ret_io = io.StringIO()
+        spc_ret.to_csv(spc_ret_io, quotechar="'", index=False)
+        spc_ret = spc_ret_io.getvalue()
+        spc_ret_io.close()
+
+    return spc_ret

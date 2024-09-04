@@ -40,14 +40,14 @@ def test__chemkin(mech_file_name, nrxns, nspcs):
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
     # Write
-    out_mech_path = Path(TEMP_PATH) / mech_file_name
-    mech_str = automech.io.chemkin.write.mechanism(mech, out=out_mech_path)
+    out = Path(TEMP_PATH) / mech_file_name
+    mech_str = automech.io.chemkin.write.mechanism(mech, out=out)
     print(mech_str)
-    #   - Check the string output
+    #   - Check the direct output
     mech = automech.io.chemkin.read.mechanism(mech_str)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
     #   - Check the file output
-    mech = automech.io.chemkin.read.mechanism(out_mech_path)
+    mech = automech.io.chemkin.read.mechanism(out)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
 
@@ -65,6 +65,20 @@ def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
     spc_path = Path(DATA_PATH) / spc_file_name
     mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
     print(mech)
+    check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
+
+    # Write
+    rxn_out = Path(TEMP_PATH) / rxn_file_name
+    spc_out = Path(TEMP_PATH) / spc_file_name
+    mech_str, csv_str = automech.io.mechanalyzer.write.mechanism(
+        mech, rxn_out=rxn_out, spc_out=spc_out, string=True
+    )
+    print(mech_str)
+    #   - Check the direct output
+    mech = automech.io.mechanalyzer.read.mechanism(mech_str, csv_str)
+    check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
+    #   - Check the file output
+    mech = automech.io.mechanalyzer.read.mechanism(rxn_out, spc_out)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
 
