@@ -401,7 +401,7 @@ def low_p_params(rate: Rate, lt: bool = True) -> tuple[float, ...]:
     :param lt: Include Landau-Teller parameters* along with basic Arrhenius parameters?
     :return: The Arrhenius parameters A, b, E, (B*, C*)
     """
-    if not isinstance(rate, SimpleRate):
+    if not isinstance(rate, SimpleRate) or low_p_arrhenius_function(rate) is None:
         return None
 
     return arrhenius_params(low_p_arrhenius_function(rate), lt=lt)
@@ -413,7 +413,7 @@ def blend_type(rate: Rate) -> BlendType:
     :param rate: The rate object
     :return: The blend type
     """
-    if not isinstance(rate, SimpleRate):
+    if not isinstance(rate, SimpleRate) or blend_function(rate) is None:
         return None
 
     return f_type(blend_function(rate))
@@ -425,7 +425,7 @@ def blend_coeffs(rate: Rate) -> BlendType:
     :param rate: The rate object
     :return: The blend coefficients
     """
-    if not isinstance(rate, SimpleRate):
+    if not isinstance(rate, SimpleRate) or blend_function(rate) is None:
         return None
 
     return f_coeffs(blend_function(rate))
@@ -458,10 +458,11 @@ def plog_params_dict(rate: Rate, lt: bool = True) -> dict[float, ArrheniusFuncti
 
 
 # I/O
-def chemkin_string(rate: Rate) -> str:
+def chemkin_string(rate: Rate, eq_width: int = 55) -> str:
     """Write the CHEMKIN rate to a string.
 
     :param rate_: The reaction rate object
+    :param eq_width: The width of the equation, for alignment purposes
     :return: CHEMKIN rate string
     """
     # Write the top line
@@ -469,27 +470,40 @@ def chemkin_string(rate: Rate) -> str:
     top_line = arrhenius_params_string(top_k)
     lines = [top_line]
 
+    # Calculate the total width of the top line for alignment
+    top_width = eq_width + len(top_line) + 1
+
     # Add any auxiliary lines
     if type_(rate) == RateType.ACTIVATED:
         k_hi = high_p_arrhenius_function(rate)
-        lines.append(chemkin_aux_line("HIGH", arrhenius_params_string(k_hi)))
+        lines.append(
+            chemkin_aux_line("HIGH", arrhenius_params_string(k_hi), top_width=top_width)
+        )
 
     if type_(rate) == RateType.FALLOFF:
         k_lo = low_p_arrhenius_function(rate)
-        lines.append(chemkin_aux_line("LOW", arrhenius_params_string(k_lo)))
+        lines.append(
+            chemkin_aux_line("LOW", arrhenius_params_string(k_lo), top_width=top_width)
+        )
 
     if type_(rate) == RateType.PLOG:
         ks = plog_arrhenius_functions(rate)
         ps = plog_pressures(rate)
         plog_lines = [
-            chemkin_aux_line("PLOG", [write_number(p), arrhenius_params_string(k)])
+            chemkin_aux_line(
+                "PLOG",
+                [write_number(p), arrhenius_params_string(k)],
+                top_width=top_width,
+            )
             for p, k in zip(ps, ks, strict=True)
         ]
         lines.extend(plog_lines)
 
     if blend_type(rate) == BlendType.TROE:
         coeffs = blend_coeffs(rate)
-        lines.append(chemkin_aux_line("TROE", write_numbers(coeffs)))
+        lines.append(
+            chemkin_aux_line("TROE", write_numbers(coeffs), top_width=top_width)
+        )
 
     return "\n".join(lines)
 
@@ -608,18 +622,24 @@ def to_old_object(rate: Rate) -> Any:
 
 # Helpers
 def chemkin_aux_line(
-    key: str, val: str | Sequence[str], key_width: int = 5, indent: int = 4
+    key: str,
+    val: str | Sequence[str],
+    top_width: int = 55,
+    key_width: int = 5,
+    indent: int = 4,
 ) -> str:
     """Format a line of auxiliary CHEMKIN reaction data.
 
     :param key: The key, e.g. 'PLOG'
     :param val: The value(s), e.g. '5.000  8500' or ['5.000', '8500']
+    :param top_width: The width of the top line, for alignment purposes
     :param key_width: The key column width, defaults to 5
     :param indent: The indentation, defaults to 4
     :return: The line
     """
+    val_width = top_width - indent - key_width - 2
     val = val if isinstance(val, str) else " ".join(val)
-    return " " * indent + f"{key:<{key_width}} /{val}/"
+    return " " * indent + f"{key:<{key_width}} /{val:>{val_width}}/"
 
 
 def write_numbers(
@@ -655,7 +675,7 @@ def write_number(num: float | int, digits: int = 4, always_sci: bool = False) ->
     # Exact width of scientific notation with 2-digit exponent:
     max_width = digits + 6  # from general formula: digits + 4 + |_log(log(num))_|
 
-    exp = int(numpy.floor(numpy.log10(numpy.abs(num))))  # scientific notation exponent
+    exp = int(numpy.floor(numpy.log10(numpy.abs(num)))) if num else 0
     float_width = max(exp + 1, digits + 1) if exp > 0 else numpy.abs(exp) + 1 + digits
 
     if always_sci or float_width > max_width:

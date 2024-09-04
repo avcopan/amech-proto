@@ -2,6 +2,7 @@
 
 import dataclasses
 import re
+from collections.abc import Sequence
 
 import pyparsing as pp
 
@@ -26,13 +27,45 @@ class Reaction:
 
     def __post_init__(self):
         """Initialize attributes."""
+        self.reactants = tuple(map(str, self.reactants))
+        self.products = tuple(map(str, self.products))
+
         # Set the collider to `None` if there isn't one
-        if not rt_.has_collider or not self.collider:
+        if not rt_.has_collider(self.rate) or not self.collider:
             self.collider = None
 
         # Set the collider to 'M' if there should be one, but it wasn't specified
         if rt_.has_collider(self.rate) and self.collider is None:
             self.collider = "M"
+
+
+# constructors
+def from_data(
+    rcts: Sequence[str],
+    prds: Sequence[str],
+    rate_: Rate | None = None,
+    coll: str | None = None,
+) -> Reaction:
+    """Construct a reaction object from data.
+
+    :param rcts: Names for the reactants
+    :param prds: Names for the products
+    :param rate_: The reaction rate
+    :param coll: The collider type: 'M', 'He', 'Ne', etc. (currently only 'M')
+    :return: The reaction object
+    """
+    return Reaction(reactants=rcts, products=prds, rate=rate_, collider=coll)
+
+
+def from_equation(eq: str, rate_: Rate | None = None) -> Reaction:
+    """Construct a reaction object from a CHEMKIN equation.
+
+    :param eq: The equation
+    :param rate_: The reaction rate, defaults to None
+    :return: The reaction object
+    """
+    rcts, prds, coll, *_ = read_chemkin_equation(eq, bare_coll=True)
+    return from_data(rcts=rcts, prds=prds, rate_=rate_, coll=coll)
 
 
 # getters
@@ -134,7 +167,7 @@ def chemkin_string(rxn: Reaction, eq_width: int = 55) -> str:
     :return: The CHEMKIN reaction string
     """
     eq = chemkin_equation(rxn)
-    return f"{eq:<{eq_width}} {rt_.chemkin_string(rate(rxn))}"
+    return f"{eq:<{eq_width}} {rt_.chemkin_string(rate(rxn), eq_width=eq_width)}"
 
 
 def from_chemkin_string(rxn_str: str) -> Reaction:
