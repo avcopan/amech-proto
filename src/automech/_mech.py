@@ -181,6 +181,30 @@ def reacting_species_names(mech: Mechanism) -> list[str]:
 
 
 # transformations
+def with_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism:
+    """Extract a submechanism containing species names from a list.
+
+    :param mech: The mechanism
+    :param spc_names: The names of the species to be included
+    :return: The submechanism
+    """
+    # Read in the mechanism data
+    spc_df: polars.DataFrame = species(mech)
+    rxn_df: polars.DataFrame = reactions(mech)
+
+    spc_names = set(spc_names)
+
+    def _contains_species(eq: str) -> bool:
+        rct_names, prd_names, *_ = data.reac.read_chemkin_equation(eq)
+        rgt_names = set(rct_names + prd_names)
+        return bool(rgt_names & spc_names)
+
+    rxn_df = df_.map_(rxn_df, Reaction.eq, "tmp", _contains_species)
+    rxn_df = rxn_df.filter("tmp").drop("tmp")
+
+    return without_unused_species(from_data(rxn_inp=rxn_df, spc_inp=spc_df))
+
+
 def without_unused_species(mech: Mechanism) -> Mechanism:
     """Remove unused species from a mechanism.
 

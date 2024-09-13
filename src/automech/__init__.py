@@ -16,6 +16,7 @@ from ._mech import (
     set_species,
     species,
     species_count,
+    with_species,
     without_unused_species,
 )
 
@@ -36,6 +37,7 @@ __all__ = [
     "reaction_count",
     "reacting_species_names",
     # transformations
+    "with_species",
     "without_unused_species",
     "expand_stereo",
     # display
