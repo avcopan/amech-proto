@@ -50,7 +50,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     """
     inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
 
-    spc_par_rets = SPECIES_DICT.parseString(inp).asDict()["dict"]
+    spc_par_rets = SPECIES_DICT.parse_string(inp, parse_all=True).asDict()["dict"]
 
     names = []
     mults = []
