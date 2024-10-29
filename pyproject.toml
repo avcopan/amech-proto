@@ -47,6 +47,7 @@ narwhals = ">=1.1.0,<1.2"
 pandera = ">=0.20.1,<0.21"
 polars = ">=0.19,<1.0"
 pyarrow = ">=17.0.0,<18"
+cantera = ">=3.0.1,<4"
 
 [tool.pixi.feature.test.dependencies]
 pip = "*"
