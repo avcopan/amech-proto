@@ -62,7 +62,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
 
         names.append(spc_par_ret["species"])
         mults.append(spc_par_ret.get("mult", 1))
-        chis.append(automol.graph.inchi(gra))
+        chis.append(automol.graph.amchi(gra))
         smis.append(automol.graph.smiles(gra))
 
     data_dct = {
