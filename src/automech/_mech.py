@@ -188,8 +188,23 @@ def reacting_species_names(mech: Mechanism) -> list[str]:
     return names
 
 
+def expansion_name_dict(mech: Mechanism) -> dict[str, list[str]]:
+    """Generate a dictionary describing the mapping of names from an expansion.
+
+    :param mech: A mechanism whose species table has an "orig_name" column
+    :return: A dictionary mapping original species names onto lists of expansion names
+    """
+    spc_df = schema.species_table(species(mech), models=[SpeciesRenamed])
+    exp_df = spc_df.group_by(SpeciesRenamed.orig_name).agg(polars.all())
+    exp_dct: dict[str, list[str]] = df_.lookup_dict(
+        exp_df, SpeciesRenamed.orig_name, Species.name
+    )
+    exp_dct = {k: v for k, v in exp_dct.items() if len(v) > 1}
+    return exp_dct
+
+
 def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
-    """Genereate a dictionary for renaming species names from one mechanism to another.
+    """Generate a dictionary for renaming species names from one mechanism to another.
 
     :param mech1: A mechanism with the original names
     :param mech2: A mechanism with the desired names

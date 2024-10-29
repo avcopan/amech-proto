@@ -121,7 +121,11 @@ def lookup_dict(
         return (
             range(df.shape[0])
             if key_ is None
-            else (df[key_] if isinstance(key_, str) else df[list(key_)].iter_rows())
+            else (
+                df[key_].to_list()
+                if isinstance(key_, str)
+                else df[list(key_)].iter_rows()
+            )
         )
 
     assert check_(in_), f"{in_} not in {df}"
