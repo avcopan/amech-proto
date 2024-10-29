@@ -1,9 +1,13 @@
 """Test automech functions."""
 
+from pathlib import Path
+
 import pytest
 
 import automech
 from automech.schema import Species
+
+DATA_PATH = Path(__file__).parent / "data"
 
 
 def test__from_smiles():
@@ -66,6 +70,38 @@ def test__expand_stereo(
     assert err_scount == ref_err_scount, f"{err_scount} != {ref_err_scount}"
 
 
+@pytest.mark.parametrize(
+    "source_prefix, target_prefix, nspcs",
+    [
+        ("cyC5e1", "cyclopentane", 30),
+    ],
+)
+def test__rename(source_prefix, target_prefix, nspcs):
+    mech0 = automech.from_data(
+        rxn_inp=DATA_PATH / f"{source_prefix}_reactions.csv",
+        spc_inp=DATA_PATH / f"{source_prefix}_species.csv",
+    )
+    name_mech = automech.from_data(
+        rxn_inp=DATA_PATH / f"{target_prefix}_reactions.csv",
+        spc_inp=DATA_PATH / f"{target_prefix}_species.csv",
+    )
+
+    name_dct, missing_names = automech.rename_dict(mech0, name_mech)
+    mech1 = automech.rename(mech0, name_dct)
+    mech2 = automech.rename(mech0, name_dct, drop_missing=True)
+
+    assert len(name_dct) + len(missing_names) == automech.species_count(mech0)
+    assert automech.species_count(mech1) == automech.species_count(mech0)
+    assert automech.species_count(mech2) == nspcs
+
+
 if __name__ == "__main__":
     # test__from_smiles()
-    test__expand_stereo(["FC=CF.[OH]>>F[C]=CF.O"], 2, 6, 0, 0)
+    # test__expand_stereo(["FC=CF.[OH]>>F[C]=CF.O"], 2, 6, 0, 0)
+    test__rename(
+        "cyC5e1_reactions.csv",
+        "cyC5e1_species.csv",
+        "cyclopentane_reactions.csv",
+        "cyclopentane_species.csv",
+        30,
+    )

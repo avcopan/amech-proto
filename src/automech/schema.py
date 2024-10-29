@@ -30,6 +30,18 @@ class Reaction(Model):
 
 
 # Extended tables
+class SpeciesRenamed(Model):
+    """Renamed species table."""
+
+    orig_name: str
+
+
+class ReactionRenamed(Model):
+    """Renamed reaction table."""
+
+    orig_eq: str
+
+
 class SpeciesStereo(Model):
     """Stereo-expanded species table."""
 

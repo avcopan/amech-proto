@@ -61,7 +61,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
         gra = automol.graph.from_parsed_rmg_adjacency_list(adj_par_ret)
 
         names.append(spc_par_ret["species"])
-        mults.append(spc_par_ret.get("mult", 1))
+        mults.append(spc_par_ret.get("mult", 1) - 1)
         chis.append(automol.graph.amchi(gra))
         smis.append(automol.graph.smiles(gra))
 

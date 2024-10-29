@@ -13,7 +13,15 @@ import pyvis
 
 # from IPython import display as ipd
 from . import data, schema
-from .schema import Model, Reaction, ReactionStereo, Species, SpeciesStereo
+from .schema import (
+    Model,
+    Reaction,
+    ReactionRenamed,
+    ReactionStereo,
+    Species,
+    SpeciesRenamed,
+    SpeciesStereo,
+)
 from .util import df_
 
 
@@ -180,12 +188,108 @@ def reacting_species_names(mech: Mechanism) -> list[str]:
     return names
 
 
+def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
+    """Genereate a dictionary for renaming species names from one mechanism to another.
+
+    :param mech1: A mechanism with the original names
+    :param mech2: A mechanism with the desired names
+    :return: The dictionary mapping names from `mech1` to those in `mech2`, and a list
+        of names from `mech1` that are missing in `mech2`
+    """
+    match_cols = [Species.amchi, Species.spin, Species.charge]
+
+    # Read in species and names
+    spc1_df = species(mech1)
+    spc1_df = spc1_df.rename({Species.name: SpeciesRenamed.orig_name})
+
+    spc2_df = species(mech2)
+    spc2_df = spc2_df.select([Species.name, *match_cols])
+
+    # Get the names from the first mechanism that are included/excluded in the second
+    incl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="inner")
+    excl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="anti")
+
+    name_dct = df_.lookup_dict(incl_spc_df, SpeciesRenamed.orig_name, Species.name)
+    missing_names = excl_spc_df[SpeciesRenamed.orig_name].to_list()
+    return name_dct, missing_names
+
+
 # transformations
-def with_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism:
-    """Extract a submechanism containing species names from a list.
+def rename(
+    mech: Mechanism, name_dct: dict[str, str], drop_missing: bool = False
+) -> Mechanism:
+    """Rename the species in a mechanism.
+
+    :param mech: A mechanism
+    :param name_dct: A dictionary mapping current species names to new species names
+    :param drop_missing: Drop missing species from the mechanism?
+        Otherwise, they are retained with their original names
+    :return: The mechanism with updated species names
+    """
+    if drop_missing:
+        mech = with_species(mech, list(name_dct), strict=drop_missing)
+
+    def _new_name(orig_name: str) -> str:
+        """Rename a species.
+
+        :param orig_name: The original name
+        :return: The new name
+        """
+        return name_dct.get(orig_name) if orig_name in name_dct else orig_name
+
+    def _new_eq(orig_eq: str) -> str:
+        rname0s, pname0s, coll, arrow = data.reac.read_chemkin_equation(orig_eq)
+        rnames = list(map(_new_name, rname0s))
+        pnames = list(map(_new_name, pname0s))
+        return data.reac.write_chemkin_equation(rnames, pnames, coll, arrow)
+
+    spc_df = species(mech)
+    spc_df = spc_df.rename({Species.name: SpeciesRenamed.orig_name})
+    spc_df = df_.map_(spc_df, SpeciesRenamed.orig_name, Species.name, _new_name)
+
+    rxn_df = reactions(mech)
+    rxn_df = rxn_df.rename({Reaction.eq: ReactionRenamed.orig_eq})
+    rxn_df = df_.map_(rxn_df, ReactionRenamed.orig_eq, Reaction.eq, _new_eq)
+    return from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+
+
+def with_species(
+    mech: Mechanism, spc_names: Sequence[str] = (), strict: bool = False
+) -> Mechanism:
+    """Extract a submechanism including species names from a list.
 
     :param mech: The mechanism
     :param spc_names: The names of the species to be included
+    :param strict: Strictly include these species and no others?
+    :return: The submechanism
+    """
+    return _with_or_without_species(
+        mech=mech, spc_names=spc_names, without=False, strict=strict
+    )
+
+
+def without_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism:
+    """Extract a submechanism excluding species names from a list.
+
+    :param mech: The mechanism
+    :param spc_names: The names of the species to be included
+    :return: The submechanism
+    """
+    return _with_or_without_species(mech=mech, spc_names=spc_names, without=True)
+
+
+def _with_or_without_species(
+    mech: Mechanism,
+    spc_names: Sequence[str] = (),
+    without: bool = False,
+    strict: bool = False,
+) -> Mechanism:
+    """Extract a submechanism containing or excluding species names from a list.
+
+    :param mech: The mechanism
+    :param spc_names: The names of the species to be included or excluded
+    :param without: Extract the submechanism *without* these species?
+    :param strict: Strictly include these species and no others?
     :return: The submechanism
     """
     # Read in the mechanism data
@@ -194,13 +298,14 @@ def with_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism:
 
     spc_names = set(spc_names)
 
-    def _contains_species(eq: str) -> bool:
+    def _include(eq: str) -> bool:
         rct_names, prd_names, *_ = data.reac.read_chemkin_equation(eq)
         rgt_names = set(rct_names + prd_names)
-        return bool(rgt_names & spc_names)
+        is_incl = rgt_names <= spc_names if strict else bool(rgt_names & spc_names)
+        return without ^ is_incl
 
-    rxn_df = df_.map_(rxn_df, Reaction.eq, "tmp", _contains_species)
-    rxn_df = rxn_df.filter("tmp").drop("tmp")
+    rxn_df = df_.map_(rxn_df, Reaction.eq, "incl", _include)
+    rxn_df = rxn_df.filter("incl").drop("incl")
 
     return without_unused_species(from_data(rxn_inp=rxn_df, spc_inp=spc_df))
 
