@@ -48,8 +48,8 @@ def from_data(
     :param drop_spc: Drop unused species from the mechanism?
     :return: The mechanism object
     """
-    rxn_df = df_.from_csv(rxn_inp) if isinstance(rxn_inp, str) else rxn_inp
-    spc_df = df_.from_csv(spc_inp) if isinstance(spc_inp, str) else spc_inp
+    rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
+    spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
     rxn_df = schema.reaction_table(rxn_df, models=rxn_models)
     spc_df = schema.species_table(spc_df, models=spc_models)
     return Mechanism(reactions=rxn_df, species=spc_df)
