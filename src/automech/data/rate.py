@@ -7,7 +7,7 @@ import abc
 import dataclasses
 import enum
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any
 
 import more_itertools as mit
@@ -16,6 +16,32 @@ import pyparsing as pp
 from pyparsing import pyparsing_common as ppc
 
 MatrixLike = Sequence[Sequence[float]] | numpy.ndarray
+
+
+def add_dict_conversion(
+    map_dct: dict[type, Callable[[object], object]] | None = None,
+    ignore: Sequence[object] = (),
+) -> Callable[[type], type]:
+    """Add dict conversion to a class by overriding the `__iter__()` method.
+
+    :param map_dct: A dictionary mapping attributes to value processing functions
+    :param ignore: A list of values to ignore upon `dict()` conversion
+    :return: A decorator adding the appropriate `__iter__()` method to the class
+    """
+    map_dct = {} if map_dct is None else map_dct
+
+    def _iter(self):
+        yield from {
+            k: map_dct[k](v) if k in map_dct else v
+            for k, v in self.__dict__.items()
+            if v not in ignore
+        }.items()
+
+    def decorate(cls: type) -> type:
+        cls.__iter__ = _iter
+        return cls
+
+    return decorate
 
 
 class RateType(str, enum.Enum):
@@ -35,6 +61,7 @@ class BlendType(str, enum.Enum):
     TROE = "Troe"
 
 
+@add_dict_conversion(ignore=(None,))
 @dataclasses.dataclass
 class ArrheniusFunction:
     """An Arrhenius or Landau-Teller function (see cantera.Arrhenius).
@@ -53,11 +80,8 @@ class ArrheniusFunction:
     C: float | None = None
 
 
-ArrheniusFunctionOrData = Sequence[float] | ArrheniusFunction
-
-
 def arrhenius_function_from_data(
-    data: ArrheniusFunctionOrData,
+    data: Sequence[float] | dict[str, float | None] | ArrheniusFunction,
 ) -> ArrheniusFunction:
     """Build an Arrhenius function object from data.
 
@@ -67,6 +91,9 @@ def arrhenius_function_from_data(
     """
     if isinstance(data, ArrheniusFunction):
         return ArrheniusFunction(*arrhenius_params(data))
+
+    if isinstance(data, dict):
+        return ArrheniusFunction(**data)
 
     return ArrheniusFunction(*data)
 
@@ -101,6 +128,7 @@ def arrhenius_string(
     return write_numbers(nums=nums, always_sci=always_sci, digits=digits)
 
 
+@add_dict_conversion(map_dct={"type_": lambda x: x.value}, ignore=(None,))
 @dataclasses.dataclass
 class BlendingFunction:
     """A blending function for high and low-pressure rates (see cantera.Falloff).
@@ -114,17 +142,16 @@ class BlendingFunction:
     """
 
     type_: BlendType = BlendType.LIND
-    coeffs: tuple[float, ...] | None = None
+    coeffs: list[float] | None = None
 
     def __post_init__(self):
         """Initialize attributes."""
         self.type_ = BlendType(self.type_)
 
 
-BlendingFunctionOrData = tuple[str | BlendType, Sequence[float]] | BlendingFunction
-
-
-def blending_function_from_data(data: BlendingFunctionOrData) -> BlendingFunction:
+def blending_function_from_data(
+    data: tuple[str | BlendType, Sequence[float]] | dict[str, object] | BlendingFunction
+) -> BlendingFunction:
     """Build a blending function object from data.
 
     If a blending function is passed in, it will be returned as-is.
@@ -136,6 +163,9 @@ def blending_function_from_data(data: BlendingFunctionOrData) -> BlendingFunctio
         coeffs = f_coeffs(data)
         type_ = f_type(data)
         return BlendingFunction(type_=type_, coeffs=coeffs)
+
+    if isinstance(data, dict):
+        return BlendingFunction(**data)
 
     return BlendingFunction(*data)
 
@@ -185,6 +215,15 @@ class Rate(abc.ABC):
         pass
 
 
+@add_dict_conversion(
+    map_dct={
+        "k": lambda x: dict(x),
+        "k0": lambda x: dict(x),
+        "f": lambda x: dict(x),
+        "type_": lambda x: x.value,
+    },
+    ignore=(None,),
+)
 @dataclasses.dataclass
 class SimpleRate(Rate):
     """Simple reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
@@ -228,6 +267,15 @@ class SimpleRate(Rate):
             self.f = BlendingFunction() if self.f is None else self.f
 
 
+@add_dict_conversion(
+    map_dct={
+        "ks": lambda x: list(map(dict, x)),
+        "ps": lambda x: list(x),
+        "k": lambda x: dict(x),
+        "type_": lambda x: x.value,
+    },
+    ignore=(None,),
+)
 @dataclasses.dataclass
 class PlogRate(Rate):
     """P-Log reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
@@ -253,6 +301,15 @@ class PlogRate(Rate):
         assert self.type_ == RateType.PLOG
 
 
+@add_dict_conversion(
+    map_dct={
+        "t_limits": lambda x: list(x),
+        "p_limits": lambda x: list(x),
+        "coeffs": lambda x: x.tolist(),
+        "type_": lambda x: x.value,
+    },
+    ignore=(None,),
+)
 @dataclasses.dataclass
 class ChebRate(Rate):
     """Chebyshev reaction rate, k(T,P) parametrization (see cantera.ReactionRate).
@@ -284,14 +341,14 @@ class ChebRate(Rate):
 
 # constructors
 def from_data(
-    k: ArrheniusFunctionOrData,
-    k0: ArrheniusFunctionOrData | None = None,
+    k: Sequence[float] | ArrheniusFunction,
+    k0: Sequence[float] | ArrheniusFunction | None = None,
     f: tuple[str, Sequence[float]] | BlendingFunction | None = None,
-    plog_ks: Sequence[ArrheniusFunctionOrData] | None = None,
-    plog_ps: Sequence[float] | None = None,
-    cheb_t_limits: Sequence[float] | None = None,
-    cheb_p_limits: Sequence[float] | None = None,
-    cheb_coeffs: MatrixLike | None = None,
+    ks: Sequence[Sequence[float] | ArrheniusFunction] | None = None,
+    ps: Sequence[float] | None = None,
+    t_limits: Sequence[float] | None = None,
+    p_limits: Sequence[float] | None = None,
+    coeffs: MatrixLike | None = None,
     type_: str | RateType | None = None,
     is_rev: bool = True,
 ) -> Rate:
@@ -300,27 +357,27 @@ def from_data(
     :param k: The (high-pressure limiting) Arrhenius function for the reaction
     :param k0: The low-pressure limiting Arrhenius function for the reaction
     :param f: Falloff function for blending the high- and low-pressure rate coefficients
-    :param plog_ks: P-Log rate coefficients at specific pressures, k_P_, k_P2, ...
-    :param plog_ps: P-Log pressures, P_, P2, ... [Pa]
-    :param cheb_t_limits: The min/max temperature limits [K] for the Chebyshev fit
-    :param cheb_p_limits: The min/max pressure limits [K] for the Chebyshev fit
-    :param cheb_coeffs: The Chebyshev expansion coefficients
+    :param ks: P-Log rate coefficients at specific pressures, k_P_, k_P2, ...
+    :param ps: P-Log pressures, P_, P2, ... [Pa]
+    :param t_limits: The min/max temperature limits [K] for the Chebyshev fit
+    :param p_limits: The min/max pressure limits [K] for the Chebyshev fit
+    :param coeffs: The Chebyshev expansion coefficients
     :param type_: The type of reaction: "Constant", "Falloff", "Activated", "Plog"
     :param is_rev: Is this a reversible reaction?
     :return: _description_
     """
     type_ = None if type_ is None else RateType(type_)
 
-    plog_args = (plog_ks, plog_ps)
+    plog_args = (ks, ps)
     if any(arg is not None for arg in plog_args) or type_ == RateType.PLOG:
-        return PlogRate(ks=plog_ks, ps=plog_ps, k=k, is_rev=is_rev, type_=type_)
+        return PlogRate(ks=ks, ps=ps, k=k, is_rev=is_rev, type_=type_)
 
-    cheb_args = (cheb_t_limits, cheb_p_limits, cheb_coeffs)
+    cheb_args = (t_limits, p_limits, coeffs)
     if any(arg is not None for arg in cheb_args) or type_ == RateType.CHEB:
         return ChebRate(
-            t_limits=cheb_t_limits,
-            p_limits=cheb_p_limits,
-            coeffs=cheb_coeffs,
+            t_limits=t_limits,
+            p_limits=p_limits,
+            coeffs=coeffs,
             k=k,
             is_rev=is_rev,
             type_=type_,
@@ -387,11 +444,11 @@ def from_chemkin_string(rate_str: str, is_rev: bool = True) -> Rate:
         k=k,
         k0=k0,
         f=f,
-        plog_ks=plog_ks,
-        plog_ps=plog_ps,
-        cheb_t_limits=cheb_t_limits,
-        cheb_p_limits=cheb_p_limits,
-        cheb_coeffs=cheb_coeffs,
+        ks=plog_ks,
+        ps=plog_ps,
+        t_limits=cheb_t_limits,
+        p_limits=cheb_p_limits,
+        coeffs=cheb_coeffs,
         type_=type_,
         is_rev=is_rev,
     )
