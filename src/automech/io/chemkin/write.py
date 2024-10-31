@@ -69,6 +69,8 @@ def reactions_block(mech: Mechanism) -> str:
     def _reaction_object(eq, rate_, coll_dct):
         return reac.from_equation(eq=eq, rate_=rate_, coll_dct=coll_dct)
 
+    # Generate reaction objects
+    # (Eventually, we should have a function like _mech.with_reaction_objects(mech))
     rxn_df = _mech.reactions(mech)
     rxn_df = df_.map_(
         rxn_df,
@@ -78,13 +80,17 @@ def reactions_block(mech: Mechanism) -> str:
         dtype=object,
     )
 
-    rxn_df = df_.map_(rxn_df, "obj", "srt_eq", reac.sorted_chemkin_equation)
-    rxn_df: polars.DataFrame = df_.map_(rxn_df, "obj", "rate_type", reac.rate_type)
+    # Determine the max equation width for formatting
+    rxn_df = df_.map_(rxn_df, "obj", "ck_eq", reac.chemkin_equation)
+    eq_width = 10 + rxn_df["ck_eq"].str.len_chars().max()
+
+    # Detect duplicates
+    rxn_df = df_.map_(rxn_df, "obj", "dup_key", reac.chemkin_duplicate_key)
     rxn_df = rxn_df.with_columns(
-        polars.struct("srt_eq", "rate_type").is_duplicated().alias("dup")
+        polars.col("dup_key").list.to_struct().is_duplicated().alias("dup")
     )
 
-    eq_width = 10 + rxn_df["srt_eq"].str.len_chars().max()
+    # Generate the CHEMKIN strings for each reaction
     rxn_strs = [
         reac.chemkin_string(o, dup=d, eq_width=eq_width)
         for o, d in rxn_df.select("obj", "dup").rows()
