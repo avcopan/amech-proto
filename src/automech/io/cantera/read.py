@@ -1,7 +1,6 @@
 """Functions for reading CHEMKIN-formatted files."""
 
 import os
-from pathlib import Path
 
 import cantera
 import polars

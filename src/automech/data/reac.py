@@ -17,26 +17,24 @@ class Reaction:
     :param reactants: Names for the reactants
     :param products: Names for the products
     :param rate: The reaction rate
-    :param collider: The collider type: 'M', 'He', 'Ne', etc. (currently only 'M')
+    :param colliders: Colliders along with their efficiencies, e.g. {"M": 1, "Ar": 1.2}
     """
 
     reactants: tuple[str, ...]
     products: tuple[str, ...]
     rate: Rate | None = None
-    collider: str | None = None
+    colliders: dict[str, float] | None = None
 
     def __post_init__(self):
         """Initialize attributes."""
         self.reactants = tuple(map(str, self.reactants))
         self.products = tuple(map(str, self.products))
 
-        # Set the collider to `None` if there isn't one
-        if not rt_.has_collider(self.rate) or not self.collider:
+        if not self.colliders:
             self.collider = None
 
-        # Set the collider to 'M' if there should be one, but it wasn't specified
-        if rt_.has_collider(self.rate) and self.collider is None:
-            self.collider = "M"
+        if rt_.needs_collider(self.rate) and self.colliders is None:
+            self.colliders = {"M": 1.0}
 
 
 # constructors
@@ -44,28 +42,35 @@ def from_data(
     rcts: Sequence[str],
     prds: Sequence[str],
     rate_: Rate | None = None,
-    coll: str | None = None,
+    coll_dct: dict[str, float] | None = None,
 ) -> Reaction:
     """Construct a reaction object from data.
 
     :param rcts: Names for the reactants
     :param prds: Names for the products
     :param rate_: The reaction rate
-    :param coll: The collider type: 'M', 'He', 'Ne', etc. (currently only 'M')
+    :param coll_dct: Colliders along with their efficiencies, e.g. {"M": 1, "Ar": 1.2}
     :return: The reaction object
     """
-    return Reaction(reactants=rcts, products=prds, rate=rate_, collider=coll)
+    rate_ = rt_.from_data(**rate_) if isinstance(rate_, dict) else rate_
+    return Reaction(reactants=rcts, products=prds, rate=rate_, colliders=coll_dct)
 
 
-def from_equation(eq: str, rate_: Rate | None = None) -> Reaction:
+def from_equation(
+    eq: str, rate_: Rate | None = None, coll_dct: dict[str, float] | None = None
+) -> Reaction:
     """Construct a reaction object from a CHEMKIN equation.
 
     :param eq: The equation
     :param rate_: The reaction rate, defaults to None
+    :param coll_dct: Colliders along with their efficiencies, e.g. {"M": 1, "Ar": 1.2}
     :return: The reaction object
     """
     rcts, prds, coll, *_ = read_chemkin_equation(eq, bare_coll=True)
-    return from_data(rcts=rcts, prds=prds, rate_=rate_, coll=coll)
+    if coll is not None:
+        coll_dct = {coll: 1.0} if coll_dct is None else {coll: 1.0, **coll_dct}
+
+    return from_data(rcts=rcts, prds=prds, rate_=rate_, coll_dct=coll_dct)
 
 
 # getters
@@ -96,17 +101,37 @@ def rate(rxn: Reaction) -> Rate:
     return rxn.rate
 
 
-def collider(rxn: Reaction) -> str | None:
+def colliders(rxn: Reaction) -> dict[str, float] | None:
     """Get the collider, if there is one.
 
     :param rxn: A reaction object
-    :param format: Put a falloff collider in CHEMKIN format?
-    :return: The collider
+    :return: A dictionary mapping collider names onto efficiencies
     """
-    return rxn.collider
+    return rxn.colliders
 
 
 # properties
+def primary_collider(rxn: Reaction) -> str | None:
+    """Get the primary collider, if there is one.
+
+    This is the collider that would appear in the chemical equation.
+
+    :param rxn: A reaction object
+    :return: The primary collider
+    """
+    coll_dct = colliders(rxn)
+    if coll_dct is None:
+        return None
+
+    if "M" in coll_dct:
+        eff = coll_dct["M"]
+        assert eff == 1.0, f"Invalid efficiency {eff} for generic collider 'M'"
+        return "M"
+
+    coll_name = next((k for k, v in sorted(coll_dct.items()) if v == 1.0), None)
+    return coll_name
+
+
 def is_falloff(rxn: Reaction) -> bool:
     """Whether this is a fallof reaction.
 
@@ -131,7 +156,7 @@ def chemkin_collider(rxn: Reaction) -> str | None:
     :param rxn: A reaction object
     :return: The CHEMKIN collider name
     """
-    coll = collider(rxn)
+    coll = primary_collider(rxn)
     return f"(+{coll})" if is_falloff(rxn) else coll
 
 

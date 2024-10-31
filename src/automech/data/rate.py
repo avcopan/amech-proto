@@ -20,12 +20,12 @@ MatrixLike = Sequence[Sequence[float]] | numpy.ndarray
 
 def add_dict_conversion(
     map_dct: dict[type, Callable[[object], object]] | None = None,
-    ignore: Sequence[object] = (),
+    drop_none: bool = False,
 ) -> Callable[[type], type]:
     """Add dict conversion to a class by overriding the `__iter__()` method.
 
     :param map_dct: A dictionary mapping attributes to value processing functions
-    :param ignore: A list of values to ignore upon `dict()` conversion
+    :param drop_none: Drop items with `None` values upon `dict()` conversion?
     :return: A decorator adding the appropriate `__iter__()` method to the class
     """
     map_dct = {} if map_dct is None else map_dct
@@ -34,7 +34,7 @@ def add_dict_conversion(
         yield from {
             k: map_dct[k](v) if k in map_dct else v
             for k, v in self.__dict__.items()
-            if v not in ignore
+            if not (drop_none and v is None)
         }.items()
 
     def decorate(cls: type) -> type:
@@ -61,7 +61,7 @@ class BlendType(str, enum.Enum):
     TROE = "Troe"
 
 
-@add_dict_conversion(ignore=(None,))
+@add_dict_conversion(drop_none=True)
 @dataclasses.dataclass
 class ArrheniusFunction:
     """An Arrhenius or Landau-Teller function (see cantera.Arrhenius).
@@ -79,10 +79,18 @@ class ArrheniusFunction:
     B: float | None = None
     C: float | None = None
 
+    def __post_init__(self):
+        """Initialize attributes."""
+        self.A = float(self.A)
+        self.b = float(self.b)
+        self.E = float(self.E)
+        self.B = None if self.B is None else float(self.B)
+        self.C = None if self.C is None else float(self.C)
+
 
 def arrhenius_function_from_data(
     data: Sequence[float] | dict[str, float | None] | ArrheniusFunction,
-) -> ArrheniusFunction:
+) -> ArrheniusFunction | None:
     """Build an Arrhenius function object from data.
 
     :param data: The Arrhenius parameters (A, b, E), optionally followed by the two
@@ -93,6 +101,9 @@ def arrhenius_function_from_data(
         return ArrheniusFunction(*arrhenius_params(data))
 
     if isinstance(data, dict):
+        if all(v is None for v in data.values()):
+            return None
+
         return ArrheniusFunction(**data)
 
     return ArrheniusFunction(*data)
@@ -128,7 +139,7 @@ def arrhenius_string(
     return write_numbers(nums=nums, always_sci=always_sci, digits=digits)
 
 
-@add_dict_conversion(map_dct={"type_": lambda x: x.value}, ignore=(None,))
+@add_dict_conversion(map_dct={"type_": lambda x: x.value}, drop_none=True)
 @dataclasses.dataclass
 class BlendingFunction:
     """A blending function for high and low-pressure rates (see cantera.Falloff).
@@ -147,11 +158,12 @@ class BlendingFunction:
     def __post_init__(self):
         """Initialize attributes."""
         self.type_ = BlendType(self.type_)
+        self.coeffs = None if self.coeffs is None else list(map(float, self.coeffs))
 
 
 def blending_function_from_data(
     data: tuple[str | BlendType, Sequence[float]] | dict[str, object] | BlendingFunction
-) -> BlendingFunction:
+) -> BlendingFunction | None:
     """Build a blending function object from data.
 
     If a blending function is passed in, it will be returned as-is.
@@ -165,6 +177,9 @@ def blending_function_from_data(
         return BlendingFunction(type_=type_, coeffs=coeffs)
 
     if isinstance(data, dict):
+        if all(v is None for v in data.values()):
+            return None
+
         return BlendingFunction(**data)
 
     return BlendingFunction(*data)
@@ -222,7 +237,7 @@ class Rate(abc.ABC):
         "f": lambda x: dict(x),
         "type_": lambda x: x.value,
     },
-    ignore=(None,),
+    drop_none=True,
 )
 @dataclasses.dataclass
 class SimpleRate(Rate):
@@ -274,7 +289,7 @@ class SimpleRate(Rate):
         "k": lambda x: dict(x),
         "type_": lambda x: x.value,
     },
-    ignore=(None,),
+    drop_none=True,
 )
 @dataclasses.dataclass
 class PlogRate(Rate):
@@ -306,9 +321,10 @@ class PlogRate(Rate):
         "t_limits": lambda x: list(x),
         "p_limits": lambda x: list(x),
         "coeffs": lambda x: x.tolist(),
+        "k": lambda x: dict(x),
         "type_": lambda x: x.value,
     },
-    ignore=(None,),
+    drop_none=True,
 )
 @dataclasses.dataclass
 class ChebRate(Rate):
@@ -589,7 +605,7 @@ def chebyshev_coefficients(rate: Rate) -> numpy.ndarray | None:
 
 # properties
 # # common
-def has_collider(rate: Rate) -> bool:
+def needs_collider(rate: Rate) -> bool:
     """Whether this rate type involves a collider.
 
     :param rate: The rate object
@@ -897,7 +913,10 @@ FALLOFF = pp.Combine(
 ARRH_PARAMS = number_list_expr(3)
 AUX_KEYWORD = pp.Word(pp.alphanums)
 AUX_PARAMS = SLASH + number_list_expr() + SLASH
-AUX_LINE = pp.Group(AUX_KEYWORD + pp.Optional(AUX_PARAMS))
+COLL_NAME = pp.Word(pp.printables, exclude_chars="/")
+COLL_PARAMS = SLASH + ppc.number + SLASH
+COLL_LINE = pp.Group(COLL_NAME + COLL_PARAMS)
+AUX_LINE = COLL_LINE ^ pp.Group(AUX_KEYWORD + pp.Optional(AUX_PARAMS))
 RATE_EXPR = (
     pp.Suppress(...) + ARRH_PARAMS("params") + pp.Group(pp.ZeroOrMore(AUX_LINE))("aux")
 )

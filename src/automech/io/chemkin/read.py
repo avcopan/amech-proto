@@ -93,7 +93,7 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
 
     rxns = list(map(data.reac.from_chemkin_string, rxn_strs))
     eqs = list(map(data.reac.equation, rxns))
-    rates = list(map(data.reac.rate, rxns))
+    rates = list(map(dict, map(data.reac.rate, rxns)))
 
     data_dct = {Reaction.eq: eqs, ReactionRate.rate: rates}
     rxn_df = polars.DataFrame(

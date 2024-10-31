@@ -6,6 +6,7 @@ from collections.abc import Sequence
 import automol
 import pandera.polars as pa
 import polars
+from polars.datatypes import Struct
 
 from automech.util import df_
 
@@ -60,7 +61,7 @@ class ReactionStereo(Model):
 class ReactionRate(Model):
     """Reaction table with rate."""
 
-    rate: object
+    rate: Struct
 
 
 def types(
