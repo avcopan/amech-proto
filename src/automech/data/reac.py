@@ -7,7 +7,7 @@ from collections.abc import Sequence
 import pyparsing as pp
 
 from . import rate as rt_
-from .rate import Rate
+from .rate import Rate, RateType
 
 
 @dataclasses.dataclass
@@ -124,6 +124,15 @@ def colliders(rxn: Reaction, aux_only: bool = False) -> dict[str, float] | None:
 
 
 # properties
+def rate_type(rxn: Reaction) -> RateType:
+    """Get the rate type for a reaction object.
+
+    :param rxn: A reaction object
+    :return: The rate type
+    """
+    return rt_.type_(rate(rxn))
+
+
 def primary_collider(rxn: Reaction) -> str | None:
     """Get the primary collider, if there is one.
 
@@ -155,13 +164,13 @@ def is_falloff(rxn: Reaction) -> bool:
     return rt_.is_falloff(rate(rxn))
 
 
-def equation(rxn: Reaction) -> str:
+def equation(rxn: Reaction, sort: bool = False) -> str:
     """Get the CHEMKIN equation of a reaction (excludes collider term).
 
     :param rxn: A reaction object
     :return: The reaction CHEMKIN equation
     """
-    return write_chemkin_equation(reactants(rxn), products(rxn))
+    return write_chemkin_equation(reactants(rxn), products(rxn), sort=sort)
 
 
 def chemkin_collider(rxn: Reaction) -> str | None:
@@ -187,22 +196,32 @@ def chemkin_reagents(
     return reactants(rxn), products(rxn), (coll,) if tuple_coll else coll
 
 
-def chemkin_equation(rxn: Reaction) -> str:
+def chemkin_equation(rxn: Reaction, sort: bool = False) -> str:
     """Get the CHEMKIN equation of a reaction (includes collider term).
 
     :param rxn: A reaction object
     :return: The reaction CHEMKIN equation
     """
     rcts, prds, coll = chemkin_reagents(rxn)
-    return write_chemkin_equation(rcts, prds, coll=coll)
+    return write_chemkin_equation(rcts, prds, coll=coll, sort=sort)
+
+
+def sorted_chemkin_equation(rxn: Reaction) -> str:
+    """Return a CHEMKIN equation with sorted reactants and products.
+
+    :param rxn: A reaction object
+    :return: The reaction CHEMKIN equation
+    """
+    return chemkin_equation(rxn, sort=True)
 
 
 # I/O
-def chemkin_string(rxn: Reaction, eq_width: int = 55) -> str:
+def chemkin_string(rxn: Reaction, eq_width: int = 55, dup: bool = False) -> str:
     """Write a Reaction object to a CHEMKIN string.
 
     :param rxn: A reaction object
     :param eq_width: The column width for the reaction equation
+    :param dup: Add the "DUPLICATE" keyword to this reaction?
     :return: The CHEMKIN reaction string
     """
     eq = chemkin_equation(rxn)
@@ -213,9 +232,12 @@ def chemkin_string(rxn: Reaction, eq_width: int = 55) -> str:
     coll_dct = colliders(rxn, aux_only=True)
     if coll_dct is not None:
         coll_str = " ".join(f"{k}/{v:.4}/" for k, v in coll_dct.items())
-        rxn_str += f"\n   {coll_str}\n"
+        rxn_str += f"\n    {coll_str}"
 
-    return rxn_str
+    if dup:
+        rxn_str += "\n    DUPLICATE"
+
+    return f"{rxn_str}\n"
 
 
 def from_chemkin_string(rxn_str: str) -> Reaction:
@@ -224,23 +246,20 @@ def from_chemkin_string(rxn_str: str) -> Reaction:
     :param rxn_str: CHEMKIN reaction data
     :return: The reaction object
     """
-    rcts, prds, coll, arrow = read_chemkin_equation(rxn_str)
+    rcts, prds, coll, arrow = read_chemkin_equation(rxn_str, bare_coll=True)
     is_rev = arrow in ("=", "<=>")
-    has_third_body = isinstance(coll, str) and not coll.startswith("(")
-    rate_, coll_dct = rt_.from_chemkin_string(
-        rxn_str, is_rev=is_rev, has_third_body=has_third_body
-    )
+    rate_, coll_dct = rt_.from_chemkin_string(rxn_str, is_rev=is_rev, coll=coll)
     return from_data(rcts=rcts, prds=prds, rate_=rate_, coll_dct=coll_dct)
 
 
 # Chemkin equation helpers
-def standardize_chemkin_equation(eq: str) -> str:
+def standardize_chemkin_equation(eq: str, sort: bool = False) -> str:
     """Standardize the format of a CHEMKIN equation for string comparison.
 
     :param eq: The reaction CHEMKIN equation
     :return: The reaction CHEMKIN equation in standard format
     """
-    return write_chemkin_equation(*read_chemkin_equation(eq))
+    return write_chemkin_equation(*read_chemkin_equation(eq), sort=sort)
 
 
 def write_chemkin_equation(
@@ -249,6 +268,7 @@ def write_chemkin_equation(
     coll: str | None = None,
     arrow: str = "=",
     trans_dct: dict[str, str] | None = None,
+    sort: bool = False,
 ) -> str:
     """Write the CHEMKIN equation of a reaction to a string.
 
@@ -256,6 +276,7 @@ def write_chemkin_equation(
     :param prds: The product names
     :param coll: The collider
     :param trans_dct: Optionally, translate the species names using a dictionary
+    :param sort: Sort the reactants and products alphabetically?
     :return: The reaction CHEMKIN equation
     """
 
@@ -268,6 +289,10 @@ def write_chemkin_equation(
     assert all(
         isinstance(n, str) for n in rcts_ + prds_
     ), f"Some species in {rcts}={prds} have no translation:\n{trans_dct}"
+
+    if sort:
+        rcts_ = sorted(rcts_)
+        prds_ = sorted(prds_)
 
     rcts_str = " + ".join(rcts_)
     prds_str = " + ".join(prds_)

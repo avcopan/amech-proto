@@ -78,7 +78,7 @@ def map_(
 
     def row_func_(row: dict[str, object]):
         args = tuple(map(row.get, in_))
-        return dct[args] if args in dct else func_(*args)
+        return dct[args] if dct and args in dct else func_(*args)
 
     row_iter = df.iter_rows(named=True)
     if bar:

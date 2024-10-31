@@ -25,23 +25,24 @@ def check_counts(mech, ref_nrxns, ref_nspcs):
 
 
 @pytest.mark.parametrize(
-    "mech_file_name, nrxns, nspcs",
+    "mech_file_name, nrxns, nspcs, roundtrip",
     [
-        ("butane.dat", 101, 76),
-        ("ethylene.dat", 26, 31),
+        ("butane.dat", 101, 76, False),
+        ("ethylene.dat", 26, 31, False),
+        ("webb_sample.inp", 11, 16, True),
     ],
 )
-def test__chemkin(mech_file_name, nrxns, nspcs):
+def test__chemkin(mech_file_name, nrxns, nspcs, roundtrip):
     """Test automech.io.chemkin."""
     # Read
     mech_path = Path(DATA_PATH) / mech_file_name
-    mech = automech.io.chemkin.read.mechanism(mech_path)
-    print(mech)
-    check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
+    mech0 = automech.io.chemkin.read.mechanism(mech_path)
+    print(mech0)
+    check_counts(mech0, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
     # Write
     out = Path(TEMP_PATH) / mech_file_name
-    mech_str = automech.io.chemkin.write.mechanism(mech, out=out)
+    mech_str = automech.io.chemkin.write.mechanism(mech0, out=out)
     print(mech_str)
     #   - Check the direct output
     mech = automech.io.chemkin.read.mechanism(mech_str)
@@ -49,6 +50,14 @@ def test__chemkin(mech_file_name, nrxns, nspcs):
     #   - Check the file output
     mech = automech.io.chemkin.read.mechanism(out)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
+
+    if roundtrip:
+        print("Not yet checking roundtrip equivalence")
+
+    # # Check that the written mechanism has the same content
+    # # (Not yet working -- requires loosening of float comparison in `are_equivalent`)
+    # if roundtrip:
+    #     assert automech.are_equivalent(mech, mech0), f"{mech} != {mech0}"
 
 
 @pytest.mark.parametrize(
@@ -86,6 +95,7 @@ def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
     "rxn_file_name, spc_file_name, nrxns, nspcs",
     [
         ("cyclopentene.dat", "cyclopentene_species.txt", 100, 63),
+        ("webb_sample.inp", "webb_sample_species.txt", 11, 16),
     ],
 )
 def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
@@ -99,7 +109,7 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
 
 
 if __name__ == "__main__":
-    test__chemkin("butane.dat", 101, 76)
+    test__chemkin("webb_sample.inp", 11, 16, True)
     # test__chemkin("LLNL_C2H4_mech.dat", 26, 31)
     # test__mechanalyzer("propyl.dat", "propyl_species.csv", 8, 12)
     # test__mechanalyzer("syngas.dat", "syngas_species.csv", 78, 18)

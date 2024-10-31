@@ -410,7 +410,7 @@ def from_data(
 
 
 def from_chemkin_string(
-    rate_str: str, is_rev: bool = True, has_third_body: bool = False
+    rate_str: str, is_rev: bool = True, coll: str | None = None
 ) -> tuple[Rate, dict[str, float]]:
     """Read the CHEMKIN rate from a string, along with any enhanced third body
     efficiencies.
@@ -436,7 +436,7 @@ def from_chemkin_string(
     aux_dct = dict(aux_dct)
 
     # Pre-process rate type data
-    type_ = RateType.CONSTANT if not has_third_body else RateType.THIRD_BODY
+    type_ = RateType.CONSTANT if coll is None else RateType.THIRD_BODY
     k = res.get("params")
     k0 = None
     if "LOW" in aux_dct:
@@ -468,11 +468,16 @@ def from_chemkin_string(
     if "TROE" in aux_dct:
         f = (BlendType.TROE, aux_dct.get("TROE"))
 
-    coll_dct = {
+    coll_dct = {}
+    if coll is not None:
+        coll_dct[coll] = 1.0
+
+    aux_coll_dct = {
         k: float(v[0])
         for k, v in aux_dct.items()
         if k not in keywords and isinstance(v, list) and len(v) == 1
     }
+    coll_dct.update(aux_coll_dct)
 
     # Call central constructor
     rate_ = from_data(

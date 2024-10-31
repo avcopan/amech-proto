@@ -458,6 +458,27 @@ def _expand_species_stereo(
     return spc_df
 
 
+# comparison
+def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
+    """Determine whether two mechanisms are equal.
+
+    (Currently too strict -- need to figure out how to handle nested float comparisons
+    in Struct columns.)
+
+    Waiting on:
+     - https://github.com/pola-rs/polars/issues/11067 (to be used with .unnest())
+    and/or:
+     - https://github.com/pola-rs/polars/issues/18936
+
+    :param mech1: The first mechanism
+    :param mech2: The second mechanism
+    :return: `True` if they are, `False` if they aren't
+    """
+    same_reactions = reactions(mech1).equals(reactions(mech2))
+    same_species = species(mech1).equals(species(mech2))
+    return same_reactions and same_species
+
+
 # display
 def display(
     mech: Mechanism,

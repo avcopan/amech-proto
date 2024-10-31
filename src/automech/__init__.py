@@ -3,6 +3,7 @@
 from . import data, io, util
 from ._mech import (
     Mechanism,
+    are_equivalent,
     display,
     display_reactions,
     display_species,
@@ -44,6 +45,8 @@ __all__ = [
     "with_species",
     "without_unused_species",
     "expand_stereo",
+    # comparisons
+    "are_equivalent",
     # display
     "display",
     "display_species",
