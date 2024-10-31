@@ -48,6 +48,7 @@ class RateType(str, enum.Enum):
     """The type of reaction rate (type of pressure dependence)."""
 
     CONSTANT = "Constant"
+    THIRD_BODY = "ThirdBody"
     FALLOFF = "Falloff"
     ACTIVATED = "Activated"
     PLOG = "Plog"
@@ -245,6 +246,7 @@ class SimpleRate(Rate):
 
     Types:
         Constant    - k: The rate coefficient
+        ThirdBody   - k: The rate coefficient
         Falloff     - k: The high-pressure rate coefficient (M-independent)
                     - k0: The low-pressure rate coefficient
                     - f: The blending function, F(T, P_r)
@@ -272,13 +274,18 @@ class SimpleRate(Rate):
         self.f = None if self.f is None else blending_function_from_data(self.f)
 
         self.type_ = RateType.CONSTANT if self.type_ is None else RateType(self.type_)
-        assert self.type_ in (RateType.CONSTANT, RateType.FALLOFF, RateType.ACTIVATED)
+        assert self.type_ in (
+            RateType.CONSTANT,
+            RateType.THIRD_BODY,
+            RateType.FALLOFF,
+            RateType.ACTIVATED,
+        )
 
-        if self.type_ == RateType.CONSTANT:
+        if self.type_ in (RateType.CONSTANT, RateType.THIRD_BODY):
             assert self.f is None, f"f={self.f} requires P-dependent reaction type"
             assert self.k0 is None, f"k={self.k0} requires P-dependent reaction type"
 
-        if self.type_ != RateType.CONSTANT:
+        if self.type_ in (RateType.FALLOFF, RateType.ACTIVATED):
             self.f = BlendingFunction() if self.f is None else self.f
 
 
@@ -402,16 +409,22 @@ def from_data(
     return SimpleRate(k=k, k0=k0, f=f, is_rev=is_rev, type_=type_)
 
 
-def from_chemkin_string(rate_str: str, is_rev: bool = True) -> Rate:
-    """Read the CHEMKIN rate from a string.
+def from_chemkin_string(
+    rate_str: str, is_rev: bool = True, has_third_body: bool = False
+) -> tuple[Rate, dict[str, float]]:
+    """Read the CHEMKIN rate from a string, along with any enhanced third body
+    efficiencies.
 
     :param rxn_str: CHEMKIN rate string
     :param is_rev: Is this a reversible reaction?
+    :param has_third_body: Is this a reaction with a third body?
     :return: The reaction rate object
     """
     # Parse the string
     rate_expr = chemkin_rate_expr()
     res = rate_expr.parseString(rate_str).as_dict()
+
+    keywords = ("PLOG", "LOW", "HIGH", "PLOG", "TCHEB", "PCHEB", "CHEB", "TROE")
 
     # Gather auxiliary data
     aux_dct = defaultdict(list)
@@ -423,7 +436,7 @@ def from_chemkin_string(rate_str: str, is_rev: bool = True) -> Rate:
     aux_dct = dict(aux_dct)
 
     # Pre-process rate type data
-    type_ = RateType.CONSTANT
+    type_ = RateType.CONSTANT if not has_third_body else RateType.THIRD_BODY
     k = res.get("params")
     k0 = None
     if "LOW" in aux_dct:
@@ -455,8 +468,14 @@ def from_chemkin_string(rate_str: str, is_rev: bool = True) -> Rate:
     if "TROE" in aux_dct:
         f = (BlendType.TROE, aux_dct.get("TROE"))
 
+    coll_dct = {
+        k: float(v[0])
+        for k, v in aux_dct.items()
+        if k not in keywords and isinstance(v, list) and len(v) == 1
+    }
+
     # Call central constructor
-    return from_data(
+    rate_ = from_data(
         k=k,
         k0=k0,
         f=f,
@@ -468,6 +487,7 @@ def from_chemkin_string(rate_str: str, is_rev: bool = True) -> Rate:
         type_=type_,
         is_rev=is_rev,
     )
+    return rate_, coll_dct
 
 
 # getters
@@ -611,7 +631,7 @@ def needs_collider(rate: Rate) -> bool:
     :param rate: The rate object
     :return: `True` if it does, `False` if it doesn't
     """
-    return type_(rate) in (RateType.ACTIVATED, RateType.FALLOFF)
+    return type_(rate) in (RateType.THIRD_BODY, RateType.ACTIVATED, RateType.FALLOFF)
 
 
 def is_falloff(rate: Rate) -> bool:
@@ -901,7 +921,7 @@ def number_list_expr(
     :return: The parse expression
     """
     nmax = nmin if nmax is None else nmax
-    return pp.delimitedList(ppc.number, delim=delim, min=nmin, max=nmax)
+    return pp.delimitedList(ppc.number.copy(), delim=delim, min=nmin, max=nmax)
 
 
 SLASH = pp.Suppress(pp.Literal("/"))
@@ -914,8 +934,8 @@ ARRH_PARAMS = number_list_expr(3)
 AUX_KEYWORD = pp.Word(pp.alphanums)
 AUX_PARAMS = SLASH + number_list_expr() + SLASH
 COLL_NAME = pp.Word(pp.printables, exclude_chars="/")
-COLL_PARAMS = SLASH + ppc.number + SLASH
-COLL_LINE = pp.Group(COLL_NAME + COLL_PARAMS)
+COLL_PARAM = SLASH + ppc.number + SLASH
+COLL_LINE = pp.Group(COLL_NAME + COLL_PARAM)
 AUX_LINE = COLL_LINE ^ pp.Group(AUX_KEYWORD + pp.Optional(AUX_PARAMS))
 RATE_EXPR = (
     pp.Suppress(...) + ARRH_PARAMS("params") + pp.Group(pp.ZeroOrMore(AUX_LINE))("aux")

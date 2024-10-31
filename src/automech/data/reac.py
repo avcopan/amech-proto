@@ -101,13 +101,23 @@ def rate(rxn: Reaction) -> Rate:
     return rxn.rate
 
 
-def colliders(rxn: Reaction) -> dict[str, float] | None:
+def colliders(rxn: Reaction, aux_only: bool = False) -> dict[str, float] | None:
     """Get the collider, if there is one.
 
     :param rxn: A reaction object
+    :param aux_only: Only return the auxiliary colliders?
     :return: A dictionary mapping collider names onto efficiencies
     """
-    return rxn.colliders
+    coll_dct = rxn.colliders
+
+    if coll_dct is None:
+        return None
+
+    if aux_only:
+        coll0 = primary_collider(rxn)
+        coll_dct = {k: v for k, v in coll_dct.items() if k != coll0}
+
+    return coll_dct
 
 
 # properties
@@ -119,7 +129,8 @@ def primary_collider(rxn: Reaction) -> str | None:
     :param rxn: A reaction object
     :return: The primary collider
     """
-    coll_dct = colliders(rxn)
+    coll_dct = rxn.colliders
+
     if coll_dct is None:
         return None
 
@@ -192,7 +203,16 @@ def chemkin_string(rxn: Reaction, eq_width: int = 55) -> str:
     :return: The CHEMKIN reaction string
     """
     eq = chemkin_equation(rxn)
-    return f"{eq:<{eq_width}} {rt_.chemkin_string(rate(rxn), eq_width=eq_width)}"
+    rate_ = rate(rxn)
+    rate_str = rt_.chemkin_string(rate_, eq_width=eq_width)
+    rxn_str = f"{eq:<{eq_width}} {rate_str}"
+
+    coll_dct = colliders(rxn, aux_only=True)
+    if coll_dct is not None:
+        coll_str = " ".join(f"{k}/{v:.4}/" for k, v in coll_dct.items())
+        rxn_str += f"\n   {coll_str}"
+
+    return rxn_str
 
 
 def from_chemkin_string(rxn_str: str) -> Reaction:
@@ -201,9 +221,13 @@ def from_chemkin_string(rxn_str: str) -> Reaction:
     :param rxn_str: CHEMKIN reaction data
     :return: The reaction object
     """
-    rcts, prds, _, arrow = read_chemkin_equation(rxn_str)
-    rate = rt_.from_chemkin_string(rxn_str, is_rev=(arrow in ("=", "<=>")))
-    return Reaction(reactants=tuple(rcts), products=tuple(prds), rate=rate)
+    rcts, prds, coll, arrow = read_chemkin_equation(rxn_str)
+    is_rev = arrow in ("=", "<=>")
+    has_third_body = isinstance(coll, str) and not coll.startswith("(")
+    rate_, coll_dct = rt_.from_chemkin_string(
+        rxn_str, is_rev=is_rev, has_third_body=has_third_body
+    )
+    return from_data(rcts=rcts, prds=prds, rate_=rate_, coll_dct=coll_dct)
 
 
 # Chemkin equation helpers
