@@ -62,6 +62,7 @@ class ReactionRate(Model):
     """Reaction table with rate."""
 
     rate: Struct
+    colliders: Struct = pa.Field(nullable=True)
 
 
 def types(

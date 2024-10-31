@@ -66,10 +66,13 @@ def reactions_block(mech: Mechanism) -> str:
     """
     rxn_df = mech_reactions(mech)
     eq_width = 10 + rxn_df[Reaction.eq].str.len_chars().max()
-    rxn_strs = [
-        reac.chemkin_string(reac.from_equation(eq=e, rate_=r), eq_width=eq_width)
-        for e, r in rxn_df.select(Reaction.eq, ReactionRate.rate).rows()
+    rxns = [
+        reac.from_equation(eq=e, rate_=r, coll_dct=c)
+        for e, r, c in rxn_df.select(
+            Reaction.eq, ReactionRate.rate, ReactionRate.colliders
+        ).rows()
     ]
+    rxn_strs = [reac.chemkin_string(rxn, eq_width=eq_width) for rxn in rxns]
     return block(KeyWord.REACTIONS, rxn_strs)
 
 

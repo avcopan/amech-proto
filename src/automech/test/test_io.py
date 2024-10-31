@@ -99,8 +99,8 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
 
 
 if __name__ == "__main__":
-    # test__chemkin__read("butane.dat", 101, 76)
+    test__chemkin("butane.dat", 101, 76)
     # test__chemkin("LLNL_C2H4_mech.dat", 26, 31)
     # test__mechanalyzer("propyl.dat", "propyl_species.csv", 8, 12)
-    test__mechanalyzer("syngas.dat", "syngas_species.csv", 78, 18)
+    # test__mechanalyzer("syngas.dat", "syngas_species.csv", 78, 18)
     # test__rmg("cyclopentene.inp", "cyclopentene_species.txt", 100, 63)

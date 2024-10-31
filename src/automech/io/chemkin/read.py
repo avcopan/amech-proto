@@ -94,11 +94,18 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     rxns = list(map(data.reac.from_chemkin_string, rxn_strs))
     eqs = list(map(data.reac.equation, rxns))
     rates = list(map(dict, map(data.reac.rate, rxns)))
+    coll_dcts = list(map(data.reac.colliders, rxns))
+    # Polars doesn't allow missing values for Struct-valued columns, so replace `None`
+    # with an empty collider dictionary
+    coll_dcts = [{"M": None} if d is None else d for d in coll_dcts]
 
-    data_dct = {Reaction.eq: eqs, ReactionRate.rate: rates}
-    rxn_df = polars.DataFrame(
-        data=data_dct, schema=schema.types([Reaction, ReactionRate])
-    )
+    data_dct = {
+        Reaction.eq: eqs,
+        ReactionRate.rate: rates,
+        ReactionRate.colliders: coll_dcts,
+    }
+    schema_dct = schema.types([Reaction, ReactionRate])
+    rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
     rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
     df_.to_csv(rxn_df, out)

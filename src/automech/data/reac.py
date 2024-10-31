@@ -30,11 +30,14 @@ class Reaction:
         self.reactants = tuple(map(str, self.reactants))
         self.products = tuple(map(str, self.products))
 
-        if not self.colliders:
-            self.collider = None
+        if not self.colliders or all(v is None for v in self.colliders.values()):
+            self.colliders = None
 
         if rt_.needs_collider(self.rate) and self.colliders is None:
             self.colliders = {"M": 1.0}
+
+        if self.colliders is not None:
+            self.colliders = {k: v for k, v in self.colliders.items() if v is not None}
 
 
 # constructors
@@ -210,7 +213,7 @@ def chemkin_string(rxn: Reaction, eq_width: int = 55) -> str:
     coll_dct = colliders(rxn, aux_only=True)
     if coll_dct is not None:
         coll_str = " ".join(f"{k}/{v:.4}/" for k, v in coll_dct.items())
-        rxn_str += f"\n   {coll_str}"
+        rxn_str += f"\n   {coll_str}\n"
 
     return rxn_str
 
