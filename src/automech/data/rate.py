@@ -88,6 +88,26 @@ class ArrheniusFunction:
         self.B = None if self.B is None else float(self.B)
         self.C = None if self.C is None else float(self.C)
 
+    def __mul__(self, factor: float | int):
+        """Multiply this Arrhenius function by a scalar factor.
+
+        Example:
+        -------
+        ```
+        >>> k = automech.data.rate.ArrheniusFunction(A=1, b=0, E=0)
+        >>> print(k * 2)
+        ArrheniusFunction(A=2.0, b=0.0, E=0.0)
+        ```
+
+        :param factor: The scale factor
+        :return: The new Arrhenius function
+        """
+        return ArrheniusFunction(
+            A=self.A * factor, b=self.b, E=self.E, B=self.B, C=self.C
+        )
+
+    __rmul__ = __mul__
+
 
 def arrhenius_function_from_data(
     data: Sequence[float] | dict[str, float | None] | ArrheniusFunction,
@@ -230,6 +250,24 @@ class Rate(abc.ABC):
         """Whether this rate describes a reversible reaction."""
         pass
 
+    @abc.abstractmethod
+    def __mul__(self, factor: float | int):
+        """Multiply this rate by a scalar factor.
+
+        :param factor: The scale factor
+        :return: The new rate
+        """
+        pass
+
+    @abc.abstractmethod
+    def __rmul__(self, factor: float | int):
+        """Multiply this rate by a scalar factor.
+
+        :param factor: The scale factor
+        :return: The new rate
+        """
+        pass
+
 
 @add_dict_conversion(
     map_dct={
@@ -288,6 +326,32 @@ class SimpleRate(Rate):
         if self.type_ in (RateType.FALLOFF, RateType.ACTIVATED):
             self.f = BlendingFunction() if self.f is None else self.f
 
+    def __mul__(self, factor: float | int):
+        """Multiply this rate by a scalar factor.
+
+        Example:
+        -------
+        ```
+        >>> k = automech.data.rate.SimpleRate()
+        >>> print(k)
+        >>> print(k * 2)
+        SimpleRate(k=ArrheniusFunction(A=1.0, b=0.0, E=0.0), k0=None, ...)
+        SimpleRate(k=ArrheniusFunction(A=2.0, b=0.0, E=0.0), k0=None, ...)
+        ```
+
+        :param factor: The scale factor
+        :return: The new rate
+        """
+        return SimpleRate(
+            k=self.k * factor,
+            k0=None if self.k0 is None else self.k0 * factor,
+            f=self.f,
+            is_rev=self.is_rev,
+            type_=self.type_,
+        )
+
+    __rmul__ = __mul__
+
 
 @add_dict_conversion(
     map_dct={
@@ -321,6 +385,22 @@ class PlogRate(Rate):
         self.k = None if self.k is None else arrhenius_function_from_data(self.k)
         self.type_ = RateType.PLOG if self.type_ is None else RateType(self.type_)
         assert self.type_ == RateType.PLOG
+
+    def __mul__(self, factor: float | int):
+        """Multiply this rate by a scalar factor.
+
+        :param factor: The scale factor
+        :return: The new rate
+        """
+        return PlogRate(
+            ks=[k * factor for k in self.ks],
+            ps=self.ps,
+            k=None if self.k is None else self.k * factor,
+            is_rev=self.is_rev,
+            type_=self.type_,
+        )
+
+    __rmul__ = __mul__
 
 
 @add_dict_conversion(
@@ -360,6 +440,23 @@ class ChebRate(Rate):
         self.k = None if self.k is None else arrhenius_function_from_data(self.k)
         self.type_ = RateType.CHEB if self.type_ is None else RateType(self.type_)
         assert self.type_ == RateType.CHEB
+
+    def __mul__(self, factor: float | int):
+        """Multiply this rate by a scalar factor.
+
+        :param factor: The scale factor
+        :return: The new rate
+        """
+        return ChebRate(
+            t_limits=self.t_limits,
+            p_limits=self.p_limits,
+            coeffs=self.coeffs * factor,
+            k=None if self.k is None else self.k * factor,
+            is_rev=self.is_rev,
+            type_=self.type_,
+        )
+
+    __rmul__ = __mul__
 
 
 # constructors
