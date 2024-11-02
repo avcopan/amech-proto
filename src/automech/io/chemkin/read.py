@@ -271,7 +271,7 @@ def therm_entry_dict(inp: str) -> dict[str, str]:
     if entries is None:
         return None
 
-    return {e.split(maxsplit=1)[0]: e for e in entries}
+    return dict(e.split(maxsplit=1) for e in entries)
 
 
 # generic

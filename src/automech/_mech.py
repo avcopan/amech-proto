@@ -33,19 +33,29 @@ class Mechanism:
 
     reactions: polars.DataFrame
     species: polars.DataFrame
+    thermo_temps: tuple[float, float, float] | None = None
+    rate_units: tuple[str, str] | None = None
 
     def __repr__(self):
         rxn_df_rep = textwrap.indent(repr(self.reactions), "  ")
         spc_df_rep = textwrap.indent(repr(self.species), "  ")
-        rxn_rep = textwrap.indent(f"reactions=DataFrame(\n{rxn_df_rep}\n)", "  ")
-        spc_rep = textwrap.indent(f"species=DataFrame(\n{spc_df_rep}\n)", "  ")
-        return f"Mechanism(\n{rxn_rep},\n{spc_rep},\n)"
+        attrib_strs = [
+            f"reactions=DataFrame(\n{rxn_df_rep}\n)",
+            f"species=DataFrame(\n{spc_df_rep}\n)",
+            f"thermo_temps={self.thermo_temps}",
+            f"rate_units={self.rate_units}",
+        ]
+        attrib_strs = [textwrap.indent(s, "  ") for s in attrib_strs]
+        attrib_str = ",\n".join(attrib_strs)
+        return f"Mechanism(\n{attrib_str},\n)"
 
 
 # constructors
 def from_data(
     rxn_inp: str | polars.DataFrame,
     spc_inp: str | polars.DataFrame,
+    thermo_temps: tuple[float, float, float] | None = None,
+    rate_units: tuple[str, str] | None = None,
     rxn_models: Sequence[Model] = (),
     spc_models: Sequence[Model] = (),
 ) -> Mechanism:
@@ -62,7 +72,12 @@ def from_data(
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
     rxn_df = schema.reaction_table(rxn_df, models=rxn_models)
     spc_df = schema.species_table(spc_df, models=spc_models)
-    return Mechanism(reactions=rxn_df, species=spc_df)
+    return Mechanism(
+        reactions=rxn_df,
+        species=spc_df,
+        thermo_temps=thermo_temps,
+        rate_units=rate_units,
+    )
 
 
 def from_smiles(

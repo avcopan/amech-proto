@@ -39,7 +39,11 @@ def mechanism(
     rxn_df = chemkin_read.reactions(rxn_inp, out=out)
     spc_df = species(spc_inp)
     spc_df = chemkin_read.thermo(rxn_inp, spc_df=spc_df, out=spc_out)
-    return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    rate_units = chemkin_read.reactions_units(rxn_inp)
+    thermo_temps = chemkin_read.therm_temperatures(rxn_inp)
+    return mechanism_from_data(
+        rxn_inp=rxn_df, spc_inp=spc_df, rate_units=rate_units, thermo_temps=thermo_temps
+    )
 
 
 def species(inp: str, out: str | None = None) -> polars.DataFrame:
