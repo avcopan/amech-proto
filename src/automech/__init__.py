@@ -7,6 +7,7 @@ from ._mech import (
     display,
     display_reactions,
     display_species,
+    expand_parent_stereo,
     expand_stereo,
     from_data,
     from_smiles,
@@ -45,6 +46,7 @@ __all__ = [
     "with_species",
     "without_unused_species",
     "expand_stereo",
+    "expand_parent_stereo",
     # comparisons
     "are_equivalent",
     # display

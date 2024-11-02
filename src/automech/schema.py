@@ -65,6 +65,12 @@ class ReactionRate(Model):
     colliders: Struct = pa.Field(nullable=True)
 
 
+class ReactionMisc(Model):
+    """Miscellaneous reaction columns (not for validation)."""
+
+    orig_rate: Struct  # Add this to `ReactionStereo` instead?
+
+
 def types(
     models: Sequence[Model], keys: Sequence[str] | None = None
 ) -> dict[str, type]:
@@ -133,7 +139,7 @@ def species_table(
             Species.amchi,
             Species.name,
             automol.amchi.chemkin_name,
-            dtype=dt,
+            dtype_=dt,
             dct=name_dct,
         )
 
@@ -147,7 +153,7 @@ def species_table(
                 Species.amchi,
                 Species.spin,
                 automol.amchi.guess_spin,
-                dtype=dt,
+                dtype_=dt,
                 dct=spin_dct,
             )
 
@@ -163,7 +169,7 @@ def species_table(
     if Species.charge not in df:
         dt = dt_dct[Species.charge]
         df = df_.map_(
-            df, Species.amchi, Species.charge, lambda _: 0, dtype=dt, dct=charge_dct
+            df, Species.amchi, Species.charge, lambda _: 0, dtype_=dt, dct=charge_dct
         )
 
     for model in models:

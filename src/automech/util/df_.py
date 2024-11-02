@@ -54,21 +54,21 @@ def to_csv(
 def map_(
     df: FrameT,
     in_: Key_,
-    out: Key | None,
+    out_: Key_ | None,
     func_: Callable,
     dct: dict[object, object] | None = None,
-    dtype: polars.DataType | None = None,
+    dtype_: polars.DataType | Sequence[polars.DataType] | None = None,
     bar: bool = True,
 ) -> FrameT:
     """Map columns from a dataframe onto a new column.
 
     :param df: The dataframe
     :param in_: The input key or keys
-    :param out: The output key; if `None`, the function output will be ignored
+    :param out_: The output key or keys; if `None`, the function output will be ignored
     :param func_: The mapping function
     :param dct: A lookup dictionary; If the arguments are a key in this dictionary, its
         value will be returned in place of the function value
-    :param dtype: The data type of the output
+    :param dtype_: The data type of the output
     :param bar: Include a progress bar?
     :return: The resulting dataframe
     """
@@ -85,9 +85,23 @@ def map_(
         row_iter = tqdm(row_iter, total=df.shape[0])
 
     vals = list(map(row_func_, row_iter))
-    if out is not None:
-        col = polars.Series(name=out, values=vals, dtype=dtype, strict=False)
+    if out_ is None:
+        return
 
+    # Post-process the output
+    if isinstance(out_, str):
+        out_ = (out_,)
+        dtype_ = (dtype_,)
+        vals_lst = (vals,)
+    else:
+        vals_lst = list(zip(*vals, strict=True))
+        nvals = len(vals_lst)
+        assert len(out_) == nvals, f"Cannot match {nvals} output values to keys {out_}"
+
+    assert len(out_) == len(dtype_), f"Cannot match {dtype_} dtypes to keys {out_}"
+
+    for out, dtype, vals in zip(out_, dtype_, vals_lst, strict=True):
+        col = polars.Series(name=out, values=vals, dtype=dtype, strict=False)
         df = df.with_columns(narwhals.from_native(col, series_only=True))
 
     return df

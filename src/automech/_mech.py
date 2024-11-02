@@ -16,6 +16,8 @@ from . import data, schema
 from .schema import (
     Model,
     Reaction,
+    ReactionMisc,
+    ReactionRate,
     ReactionRenamed,
     ReactionStereo,
     Species,
@@ -186,21 +188,6 @@ def reacting_species_names(mech: Mechanism) -> list[str]:
     rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
     names = list(mit.unique_everseen(itertools.chain(*rxn_names)))
     return names
-
-
-def expansion_name_dict(mech: Mechanism) -> dict[str, list[str]]:
-    """Generate a dictionary describing the mapping of names from an expansion.
-
-    :param mech: A mechanism whose species table has an "orig_name" column
-    :return: A dictionary mapping original species names onto lists of expansion names
-    """
-    spc_df = schema.species_table(species(mech), models=[SpeciesRenamed])
-    exp_df = spc_df.group_by(SpeciesRenamed.orig_name).agg(polars.all())
-    exp_dct: dict[str, list[str]] = df_.lookup_dict(
-        exp_df, SpeciesRenamed.orig_name, Species.name
-    )
-    exp_dct = {k: v for k, v in exp_dct.items() if len(v) > 1}
-    return exp_dct
 
 
 def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
@@ -456,6 +443,77 @@ def _expand_species_stereo(
     spc_df = spc_df.rename({Species.smiles: SpeciesStereo.orig_smiles})
     spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles)
     return spc_df
+
+
+def expand_parent_stereo(sub_mech: Mechanism, par_mech: Mechanism) -> Mechanism:
+    """Apply the stereoexpansion of a submechanism to a parent mechanism.
+
+    Produces an equivalent of the parent mechanism, containing the distinct
+    stereoisomers of the submechanism. The expansion is completely naive, with no
+    consideration of stereospecificity, and is simply designed to allow merging of a
+    stereo-expanded submechanism into a parent mechanism.
+
+    :param sub_mech: A stereo-expanded sub-mechanism
+    :param par_mech: A parent mechanism
+    :return: An equivalent parent mechanism, with distinct stereoisomers from the
+        sub-mechanism
+    """
+    # 1. Species table
+    #   a. Add stereo columns to par_mech species table
+    col_dct = {
+        Species.name: SpeciesStereo.orig_name,
+        Species.smiles: SpeciesStereo.orig_smiles,
+        Species.amchi: SpeciesStereo.orig_amchi,
+    }
+    par_spc_df = species(par_mech)
+    par_spc_df = par_spc_df.rename(col_dct)
+
+    #   b. Group by original names and isolate expanded stereoisomers
+    sub_spc_df = species(sub_mech)
+    sub_spc_df = schema.species_table(sub_spc_df, models=(SpeciesStereo,))
+    sub_spc_df = sub_spc_df.select(*col_dct.keys(), *col_dct.values())
+    sub_spc_df = sub_spc_df.group_by(SpeciesRenamed.orig_name).agg(polars.all())
+    sub_spc_df = sub_spc_df.filter(polars.col(Species.name).list.len() > 1)
+
+    #   c. Form species expansion dictionary, to be used for reaction expansion
+    exp_dct: dict[str, list[str]] = df_.lookup_dict(
+        sub_spc_df, SpeciesRenamed.orig_name, Species.name
+    )
+
+    #   d. Join on original names, explode, and fill in non-stereoisomer columns
+    exp_spc_df = par_spc_df.join(sub_spc_df, how="left", on=SpeciesStereo.orig_name)
+    exp_spc_df = exp_spc_df.drop(polars.selectors.ends_with("_right"))
+    exp_spc_df = exp_spc_df.explode(*col_dct.keys())
+    exp_spc_df = exp_spc_df.with_columns(
+        *(polars.col(k).fill_null(polars.col(v)) for k, v in col_dct.items())
+    )
+
+    # 2. Reaction table
+    #   a. Identify the subset of reactions to be expanded
+    par_rxn_df = reactions(par_mech)
+    par_rxn_df = par_rxn_df.with_columns(
+        polars.col(Reaction.eq).alias(ReactionStereo.orig_eq),
+        polars.col(ReactionRate.rate).alias(ReactionMisc.orig_rate),
+    )
+    needs_exp = polars.col(Reaction.eq).str.contains_any(list(exp_dct.keys()))
+    exp_rxn_df = par_rxn_df.filter(needs_exp)
+    rem_rxn_df = par_rxn_df.filter(~needs_exp)
+
+    #   b. Expand the reactions
+    def _expand(eq0, rate0):
+        rxn0 = data.reac.from_equation(eq=eq0, rate_=rate0)
+        rxns = data.reac.expand_lumped_species(rxn0, exp_dct=exp_dct)
+        eqs = list(map(data.reac.equation, rxns))
+        rates = list(map(dict, map(data.reac.rate, rxns)))
+        return eqs, rates
+
+    cols = [Reaction.eq, ReactionRate.rate]
+    dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
+    exp_rxn_df = df_.map_(exp_rxn_df, cols, cols, _expand, dtype_=dtypes)
+    exp_rxn_df: polars.DataFrame = exp_rxn_df.explode(cols)
+    exp_rxn_df = polars.concat([rem_rxn_df, exp_rxn_df])
+
+    return from_data(rxn_inp=exp_rxn_df, spc_inp=exp_spc_df)
 
 
 # comparison

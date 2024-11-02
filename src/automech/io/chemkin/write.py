@@ -77,7 +77,7 @@ def reactions_block(mech: Mechanism) -> str:
         [Reaction.eq, ReactionRate.rate, ReactionRate.colliders],
         "obj",
         _reaction_object,
-        dtype=object,
+        dtype_=object,
     )
 
     # Determine the max equation width for formatting
