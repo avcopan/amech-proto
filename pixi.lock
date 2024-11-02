@@ -189,7 +189,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pillow-11.0.0-py312h7b63e92_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pint-0.24.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pixman-0.43.2-h59595ed_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-0.20.31-py312hd26010a_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-1.12.0-py312hfe7c9be_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prompt-toolkit-3.0.48-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pthread-stubs-0.4-hb9d3cd8_1002.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ptyprocess-0.7.0-pyhd3deb0d_0.tar.bz2
@@ -545,7 +545,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/pkgutil-resolve-name-1.3.10-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/platformdirs-4.3.6-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pluggy-1.5.0-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-0.20.31-py312hd26010a_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-1.12.0-py312hfe7c9be_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pre-commit-4.0.1-pyha770c72_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prometheus_client-0.21.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prompt-toolkit-3.0.48-pyha770c72_0.conda
@@ -765,7 +765,7 @@ packages:
   name: amech-proto
   version: 0.1.0
   path: .
-  sha256: f1114a5ce1d0875889453606c5f120545b5fd72db8ca4f6f0d45ae62f143aaec
+  sha256: f46061c4fa6748c5ab6b8c448279d491300ce364753009cbf32c9f516d801bfb
   requires_dist:
   - pyvis
   requires_python: '>=3.10'
@@ -5775,25 +5775,27 @@ packages:
   timestamp: 1713667175451
 - kind: conda
   name: polars
-  version: 0.20.31
-  build: py312hd26010a_1
-  build_number: 1
+  version: 1.12.0
+  build: py312hfe7c9be_0
   subdir: linux-64
-  url: https://conda.anaconda.org/conda-forge/linux-64/polars-0.20.31-py312hd26010a_1.conda
-  sha256: b72fbb124c666cc7ddbf5ac38193310b19b5b88d4dc24c8d7ca88e86d60cd944
-  md5: c444edacfe51f9034ee19fa227939d4b
+  url: https://conda.anaconda.org/conda-forge/linux-64/polars-1.12.0-py312hfe7c9be_0.conda
+  sha256: 28dce1ec8c2df50e152abd475d9209d90eede949caf2d8993c2a4d2f42eac3f4
+  md5: 47b6df7e8b629d1257a6f971b88c15de
   depends:
-  - libgcc-ng >=12
+  - __glibc >=2.17,<3.0.a0
+  - libgcc >=13
   - numpy >=1.16.0
   - packaging
   - python >=3.12,<3.13.0a0
   - python_abi 3.12.* *_cp312
+  constrains:
+  - __glibc >=2.17
   license: MIT
   license_family: MIT
   purls:
   - pkg:pypi/polars?source=hash-mapping
-  size: 22016623
-  timestamp: 1719840857908
+  size: 22766675
+  timestamp: 1730212596044
 - kind: conda
   name: pre-commit
   version: 4.0.1
