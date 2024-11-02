@@ -31,6 +31,19 @@ class Reaction(Model):
 
 
 # Extended tables
+class ReactionRate(Model):
+    """Reaction table with rate."""
+
+    rate: Struct
+    colliders: Struct = pa.Field(nullable=True)
+
+
+class SpeciesThermo(Model):
+    """Species table with thermo."""
+
+    thermo_string: str
+
+
 class SpeciesRenamed(Model):
     """Renamed species table."""
 
@@ -56,13 +69,6 @@ class ReactionStereo(Model):
 
     amchi: str
     orig_eq: str
-
-
-class ReactionRate(Model):
-    """Reaction table with rate."""
-
-    rate: Struct
-    colliders: Struct = pa.Field(nullable=True)
 
 
 class ReactionMisc(Model):

@@ -107,10 +107,13 @@ def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
+    assert automech.schema.SpeciesThermo.thermo_string in automech.species(mech)
+
 
 if __name__ == "__main__":
-    test__chemkin("webb_sample.inp", 11, 16, True)
+    # test__chemkin("webb_sample.inp", 11, 16, True)
     # test__chemkin("LLNL_C2H4_mech.dat", 26, 31)
     # test__mechanalyzer("propyl.dat", "propyl_species.csv", 8, 12)
     # test__mechanalyzer("syngas.dat", "syngas_species.csv", 78, 18)
-    # test__rmg("cyclopentene.inp", "cyclopentene_species.txt", 100, 63)
+    test__rmg("cyclopentene.dat", "cyclopentene_species.txt", 100, 63)
+    # test__rmg("webb_sample.inp", "webb_sample_species.txt", 11, 16)

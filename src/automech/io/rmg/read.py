@@ -37,7 +37,8 @@ def mechanism(
     :return: The mechanism dataclass
     """
     rxn_df = chemkin_read.reactions(rxn_inp, out=out)
-    spc_df = species(spc_inp, out=spc_out)
+    spc_df = species(spc_inp)
+    spc_df = chemkin_read.thermo(rxn_inp, spc_df=spc_df, out=spc_out)
     return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
 
 
