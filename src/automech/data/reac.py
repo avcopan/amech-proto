@@ -1,6 +1,8 @@
 """Reaction dataclasses."""
 
 import dataclasses
+import itertools
+import math
 import re
 from collections.abc import Sequence
 
@@ -121,6 +123,136 @@ def colliders(rxn: Reaction, aux_only: bool = False) -> dict[str, float] | None:
         coll_dct = {k: v for k, v in coll_dct.items() if k != coll0}
 
     return coll_dct
+
+
+# setters
+def set_reactants(rxn: Reaction, rcts: tuple[str, ...]) -> Reaction:
+    """Set the list of reactants.
+
+    :param rxn: A reaction object
+    :param rcts: The new CHEMKIN names of the reactants
+    :return: The new reaction object
+    """
+    return from_data(
+        rcts=rcts, prds=products(rxn), rate_=rate(rxn), coll_dct=colliders(rxn)
+    )
+
+
+def set_products(rxn: Reaction, prds: tuple[str, ...]) -> Reaction:
+    """Set the list of products.
+
+    :param rxn: A reaction object
+    :param prds: The CHEMKIN names of the products
+    :return: The new reaction object
+    """
+    return from_data(
+        rcts=reactants(rxn), prds=prds, rate_=rate(rxn), coll_dct=colliders(rxn)
+    )
+
+
+def set_rate(rxn: Reaction, rate_: Rate) -> Reaction:
+    """Set the rate constant.
+
+    :param rxn: A reaction object
+    :param rate_: The rate object
+    :return: The new reaction object
+    """
+    return from_data(
+        rcts=reactants(rxn), prds=products(rxn), rate_=rate_, coll_dct=colliders(rxn)
+    )
+
+
+def set_colliders(
+    rxn: Reaction, coll_dct: dict[str, float] | None, aux_only: bool = False
+) -> Reaction:
+    """Set the collider, if there is one.
+
+    :param rxn: A reaction object
+    :param coll_dct: A dictionary mapping collider names onto efficiencies
+    :param aux_only: Only set the auxiliary colliders?
+    :return: The new reaction object
+    """
+    coll0 = primary_collider(rxn)
+    if aux_only and coll0 is not None:
+        coll_dct = {coll0: 1, **coll_dct}
+
+    return from_data(
+        rcts=reactants(rxn), prds=products(rxn), rate_=rate(rxn), coll_dct=coll_dct
+    )
+
+
+# transformations
+def expand_lumped_species(
+    rxn: Reaction, exp_dct: dict[str, Sequence[str]]
+) -> list[Reaction]:
+    """Naively expand lumped species in a reaction, reproducing its effective rate.
+
+    General formula for unlumped rate coefficient, assuming an even ratio:
+
+        unlumped rate coefficient
+        = lumped rate coefficient x
+            nexp ^ stoich / multiset(nexp, stoich) for each lumped reactant
+            1             / multiset(nexp, stoich) for each lumped product
+
+    where nexp is the number of components in the lump and stoich is its stoichiometry
+    in the reaction.
+
+    :param rxn: A reaction object
+    :param exp_dct: A mapping of lumped species names onto unlumped species name sets
+    :return: The expanded sequence of unlumped reactions
+    """
+    rxn0 = rxn
+
+    def _expand(rgt0: str, prod: bool) -> tuple[list[dict[int, str]], float]:
+        """Determine the expansion of reactants or products, along with the factor for
+        scaling the rate.
+
+        :param rgt: The name of the reagent
+        :param prod: Is this reagent a product?
+        :return: A list of dictionaries mapping reagent list indices onto new names,
+            and a factor for scaling the rate constant
+        """
+        rgt0s = products(rxn0) if prod else reactants(rxn0)
+        # Build the expansion
+        stoich = rgt0s.count(rgt0)
+        spc_exp = exp_dct.get(rgt0)
+        rgt_combs = list(itertools.combinations_with_replacement(spc_exp, stoich))
+        rgt_idxs = [i for i, r in enumerate(rgt0s) if r == rgt0]
+        rgt_exp_dcts = [dict(zip(rgt_idxs, c, strict=True)) for c in rgt_combs]
+        # Determine the factor
+        factor = 1 if prod else len(spc_exp) ** stoich
+        factor /= len(rgt_combs)
+        return rgt_exp_dcts, factor
+
+    rct0s = reactants(rxn0)
+    prd0s = products(rxn0)
+    coll_dct = colliders(rxn0)
+
+    rexps = [_expand(s, prod=False) for s in set(rct0s) if s in exp_dct]
+    pexps = [_expand(s, prod=True) for s in set(prd0s) if s in exp_dct]
+
+    rexp_dcts_lst, rfactors = zip(*rexps, strict=True) if rexps else ((), ())
+    pexp_dcts_lst, pfactors = zip(*pexps, strict=True) if pexps else ((), ())
+    factor = math.prod(rfactors + pfactors)
+    print(factor)
+    rate_ = rate(rxn0)  # * factor [implement scalar multiplication of rates]pr
+    print(rate_)
+
+    rexp_dcts = [
+        {k: v for d in ds for k, v in d.items()}
+        for ds in itertools.product(*rexp_dcts_lst)
+    ]
+    pexp_dcts = [
+        {k: v for d in ds for k, v in d.items()}
+        for ds in itertools.product(*pexp_dcts_lst)
+    ]
+    rxns = []
+    for rexp_dct, pexp_dct in itertools.product(rexp_dcts, pexp_dcts):
+        rcts = [rexp_dct.get(i) if i in rexp_dct else s for i, s in enumerate(rct0s)]
+        prds = [pexp_dct.get(i) if i in pexp_dct else s for i, s in enumerate(prd0s)]
+        rxns.append(from_data(rcts=rcts, prds=prds, rate_=rate_, coll_dct=coll_dct))
+
+    print(list(map(chemkin_equation, rxns)))
 
 
 # properties
