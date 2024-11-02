@@ -233,11 +233,12 @@ def expand_lumped_species(
 
     rexp_dcts_lst, rfactors = zip(*rexps, strict=True) if rexps else ((), ())
     pexp_dcts_lst, pfactors = zip(*pexps, strict=True) if pexps else ((), ())
-    factor = math.prod(rfactors + pfactors)
-    print(factor)
-    rate_ = rate(rxn0)  # * factor [implement scalar multiplication of rates]pr
-    print(rate_)
 
+    # Scale the rate by the calculated factor
+    factor = math.prod(rfactors + pfactors)
+    rate_ = rate(rxn0) * factor
+
+    # Expand all possible combinations of un-lumped species
     rexp_dcts = [
         {k: v for d in ds for k, v in d.items()}
         for ds in itertools.product(*rexp_dcts_lst)
@@ -252,7 +253,7 @@ def expand_lumped_species(
         prds = [pexp_dct.get(i) if i in pexp_dct else s for i, s in enumerate(prd0s)]
         rxns.append(from_data(rcts=rcts, prds=prds, rate_=rate_, coll_dct=coll_dct))
 
-    print(list(map(chemkin_equation, rxns)))
+    return rxns
 
 
 # properties
