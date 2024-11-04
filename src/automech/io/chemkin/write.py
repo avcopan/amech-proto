@@ -14,7 +14,7 @@ from ...util import df_
 from .read import KeyWord
 
 
-def mechanism(mech: Mechanism, out: str | None = None) -> str:
+def mechanism(mech: Mechanism, out: str | Path | None = None) -> str:
     """Write a mechanism to CHEMKIN format.
 
     :param mech: A mechanism

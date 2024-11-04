@@ -97,11 +97,11 @@ def test__rename(source_prefix, target_prefix, nspcs):
 
 @pytest.mark.parametrize(
     "par_prefix, sub_prefix, rcount, scount",
-    [("parent_orig", "cyC5e1_exp", 10120, 2541)],
+    [("parent_orig.json", "cyC5e1_exp.json", 10120, 2541)],
 )
 def test__expand_parent_stereo(par_prefix, sub_prefix, rcount, scount):
-    par_mech = automech.io.read(DATA_PATH, par_prefix)
-    sub_mech = automech.io.read(DATA_PATH, sub_prefix)
+    par_mech = automech.io.read(DATA_PATH / par_prefix)
+    sub_mech = automech.io.read(DATA_PATH / sub_prefix)
 
     exp_par_mech = automech.expand_parent_stereo(sub_mech=sub_mech, par_mech=par_mech)
     assert automech.reaction_count(exp_par_mech) == rcount

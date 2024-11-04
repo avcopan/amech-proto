@@ -11,6 +11,7 @@ from ._mech import (
     expand_stereo,
     from_data,
     from_smiles,
+    from_string,
     reacting_species_names,
     reaction_count,
     reactions,
@@ -20,6 +21,7 @@ from ._mech import (
     set_species,
     species,
     species_count,
+    string,
     with_species,
     without_unused_species,
 )
@@ -49,6 +51,9 @@ __all__ = [
     "expand_parent_stereo",
     # comparisons
     "are_equivalent",
+    # read/write,
+    "string",
+    "from_string",
     # display
     "display",
     "display_species",

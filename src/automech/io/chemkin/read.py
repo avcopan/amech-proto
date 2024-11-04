@@ -59,7 +59,7 @@ A_UNIT = pp.Opt(
 
 # mechanism
 def mechanism(
-    inp: str, out: str | None = None, spc_out: str | None = None
+    inp: str, out: str | Path | None = None, spc_out: str | None = None
 ) -> Mechanism:
     """Extract the mechanism from a CHEMKIN file.
 

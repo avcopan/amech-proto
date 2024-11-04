@@ -2,6 +2,7 @@
 
 import dataclasses
 import itertools
+import json
 import textwrap
 from collections.abc import Collection, Sequence
 from pathlib import Path
@@ -33,8 +34,24 @@ class Mechanism:
 
     reactions: polars.DataFrame
     species: polars.DataFrame
-    thermo_temps: tuple[float, float, float] | None = None
     rate_units: tuple[str, str] | None = None
+    thermo_temps: tuple[float, float, float] | None = None
+
+    def __post_init__(self):
+        """Initialize attributes."""
+        if self.thermo_temps is not None:
+            assert len(self.thermo_temps) == 3, f"Bad thermo_temps: {self.thermo_temps}"
+            self.thermo_temps = tuple(map(float, self.thermo_temps))
+
+        if self.rate_units is not None:
+            assert len(self.rate_units) == 2, f"Bad rate_units: {self.rate_units}"
+            self.rate_units = tuple(map(str, self.rate_units))
+
+        if not isinstance(self.reactions, polars.DataFrame):
+            self.reactions = polars.DataFrame(self.reactions)
+
+        if not isinstance(self.species, polars.DataFrame):
+            self.species = polars.DataFrame(self.species)
 
     def __repr__(self):
         rxn_df_rep = textwrap.indent(repr(self.reactions), "  ")
@@ -42,12 +59,19 @@ class Mechanism:
         attrib_strs = [
             f"reactions=DataFrame(\n{rxn_df_rep}\n)",
             f"species=DataFrame(\n{spc_df_rep}\n)",
-            f"thermo_temps={self.thermo_temps}",
             f"rate_units={self.rate_units}",
+            f"thermo_temps={self.thermo_temps}",
         ]
         attrib_strs = [textwrap.indent(s, "  ") for s in attrib_strs]
         attrib_str = ",\n".join(attrib_strs)
         return f"Mechanism(\n{attrib_str},\n)"
+
+    def __iter__(self):
+        """For overloading dict conversion."""
+        rxn_dct = json.loads(self.reactions.write_json())
+        spc_dct = json.loads(self.species.write_json())
+        mech_dct = {**self.__dict__, "reactions": rxn_dct, "species": spc_dct}
+        yield from mech_dct.items()
 
 
 # constructors
@@ -179,7 +203,12 @@ def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
     :param mech: The mechanism
     :return: The mechanism with updated species
     """
-    return from_data(reactions(mech), spc_df)
+    return from_data(
+        reactions(mech),
+        spc_df,
+        thermo_temps=thermo_temperatures(mech),
+        rate_units=rate_units(mech),
+    )
 
 
 def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
@@ -188,7 +217,12 @@ def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
     :param mech: The mechanism
     :return: The mechanism with updated reactions
     """
-    return from_data(rxn_df, species(mech))
+    return from_data(
+        rxn_df,
+        species(mech),
+        thermo_temps=thermo_temperatures(mech),
+        rate_units=rate_units(mech),
+    )
 
 
 # properties
@@ -285,7 +319,12 @@ def rename(
     rxn_df = reactions(mech)
     rxn_df = rxn_df.rename({Reaction.eq: ReactionRenamed.orig_eq})
     rxn_df = df_.map_(rxn_df, ReactionRenamed.orig_eq, Reaction.eq, _new_eq)
-    return from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    return from_data(
+        rxn_inp=rxn_df,
+        spc_inp=spc_df,
+        thermo_temps=thermo_temperatures(mech),
+        rate_units=rate_units(mech),
+    )
 
 
 def with_species(
@@ -342,7 +381,14 @@ def _with_or_without_species(
     rxn_df = df_.map_(rxn_df, Reaction.eq, "incl", _include)
     rxn_df = rxn_df.filter("incl").drop("incl")
 
-    return without_unused_species(from_data(rxn_inp=rxn_df, spc_inp=spc_df))
+    return without_unused_species(
+        from_data(
+            rxn_inp=rxn_df,
+            spc_inp=spc_df,
+            thermo_temps=thermo_temperatures(mech),
+            rate_units=rate_units(mech),
+        )
+    )
 
 
 def without_unused_species(mech: Mechanism) -> Mechanism:
@@ -428,8 +474,18 @@ def expand_stereo(
         .struct.rename_fields([Reaction.eq, ReactionStereo.amchi])
     ).unnest(tmp_col)
 
-    mech = from_data(rxn_df, spc_df)
-    err_mech = from_data(err_df, spc_df0)
+    mech = from_data(
+        rxn_df,
+        spc_df,
+        thermo_temps=thermo_temperatures(mech),
+        rate_units=rate_units(mech),
+    )
+    err_mech = from_data(
+        err_df,
+        spc_df0,
+        thermo_temps=thermo_temperatures(mech),
+        rate_units=rate_units(mech),
+    )
 
     if drop_unused:
         mech = without_unused_species(mech)
@@ -546,7 +602,12 @@ def expand_parent_stereo(sub_mech: Mechanism, par_mech: Mechanism) -> Mechanism:
     exp_rxn_df: polars.DataFrame = exp_rxn_df.explode(cols)
     exp_rxn_df = polars.concat([rem_rxn_df, exp_rxn_df])
 
-    return from_data(rxn_inp=exp_rxn_df, spc_inp=exp_spc_df)
+    return from_data(
+        rxn_inp=exp_rxn_df,
+        spc_inp=exp_spc_df,
+        thermo_temps=thermo_temperatures(par_mech),
+        rate_units=rate_units(par_mech),
+    )
 
 
 # comparison
@@ -568,6 +629,26 @@ def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
     same_reactions = reactions(mech1).equals(reactions(mech2))
     same_species = species(mech1).equals(species(mech2))
     return same_reactions and same_species
+
+
+# read/write
+def string(mech: Mechanism) -> str:
+    """Write a mechanism to a JSON string.
+
+    :param mech: A mechanism
+    :return: The Mechanism JSON string
+    """
+    return json.dumps(dict(mech))
+
+
+def from_string(mech_str: str) -> Mechanism:
+    """Read a mechanism from a JSON string.
+
+    :param mech_str: A Mechanism JSON string
+    :return: The mechanism
+    """
+    mech_dct = json.loads(mech_str)
+    return Mechanism(**mech_dct)
 
 
 # display
