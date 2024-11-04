@@ -9,7 +9,7 @@ import polars
 from ... import _mech
 from ..._mech import Mechanism
 from ...data import reac
-from ...schema import Reaction, ReactionRate, Species
+from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
 from ...util import df_
 from .read import KeyWord
 
@@ -21,8 +21,13 @@ def mechanism(mech: Mechanism, out: str | None = None) -> str:
     :param out: Optionally, write the output to this file path
     :return: The CHEMKIN mechanism as a string
     """
-    blocks = [elements_block(mech), species_block(mech), reactions_block(mech)]
-    mech_str = "\n\n\n".join(blocks)
+    blocks = [
+        elements_block(mech),
+        species_block(mech),
+        thermo_block(mech),
+        reactions_block(mech),
+    ]
+    mech_str = "\n\n\n".join(b for b in blocks if b is not None)
     if out is not None:
         out: Path = Path(out)
         out.write_text(mech_str)
@@ -57,6 +62,35 @@ def species_block(mech: Mechanism) -> str:
         for n, s, c in spc_df.select(Species.name, Species.smiles, Species.amchi).rows()
     ]
     return block(KeyWord.SPECIES, spc_strs)
+
+
+def thermo_block(mech: Mechanism) -> str:
+    """Write the thermo block to a string.
+
+    :param mech: A mechanism
+    :return: The thermo block string
+    """
+    spc_df = _mech.species(mech)
+    if SpeciesThermo.thermo_string not in spc_df:
+        return None
+
+    # Generate the thermo strings
+    therm_strs = spc_df.select(
+        polars.concat_str(
+            polars.col(Species.name).str.pad_end(24),
+            polars.col(SpeciesThermo.thermo_string),
+        )
+    ).to_series()
+
+    # Generate the header
+    therm_temps = _mech.thermo_temperatures(mech)
+    if therm_temps is None:
+        header = None
+    else:
+        therm_temps_str = "  ".join(f"{t:.3f}" for t in therm_temps)
+        header = f"ALL\n    {therm_temps_str}"
+
+    return block(KeyWord.THERM, therm_strs, header=header)
 
 
 def reactions_block(mech: Mechanism) -> str:
@@ -95,15 +129,26 @@ def reactions_block(mech: Mechanism) -> str:
         reac.chemkin_string(o, dup=d, eq_width=eq_width)
         for o, d in rxn_df.select("obj", "dup").rows()
     ]
-    return block(KeyWord.REACTIONS, rxn_strs)
+
+    # Generate the header
+    rate_units = _mech.rate_units(mech)
+    if rate_units is None:
+        header = None
+    else:
+        e_unit, a_unit = rate_units
+        header = f"   {e_unit}   {a_unit}"
+
+    return block(KeyWord.REACTIONS, rxn_strs, header=header)
 
 
-def block(key, val) -> str:
+def block(key, val, header: str | None = None) -> str:
     """Write a block to a string.
 
     :param key: The starting key for the block
     :param val: The block value(s)
+    :param header: A header for the block
     :return: The block
     """
+    start = key if header is None else f"{key} {header}"
     val = val if isinstance(val, str) else "\n".join(val)
-    return "\n\n".join([key, val, KeyWord.END])
+    return "\n\n".join([start, val, KeyWord.END])

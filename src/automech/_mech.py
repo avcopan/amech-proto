@@ -154,6 +154,24 @@ def reactions(mech: Mechanism) -> polars.DataFrame:
     return mech.reactions
 
 
+def thermo_temperatures(mech: Mechanism) -> tuple[float, float, float] | None:
+    """Get the thermo temperatures for a mechanism.
+
+    :param mech: The mechanism
+    :return: The thermo temperatures
+    """
+    return mech.thermo_temps
+
+
+def rate_units(mech: Mechanism) -> tuple[str, str] | None:
+    """Get the rate units for a mechanism.
+
+    :param mech: The mechanism
+    :return: The rate units
+    """
+    return mech.rate_units
+
+
 # getters
 def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
     """Set the species dataframe for a mechanism.
