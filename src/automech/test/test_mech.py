@@ -103,7 +103,7 @@ def test__expand_parent_stereo(par_prefix, sub_prefix, rcount, scount):
     par_mech = automech.io.read(DATA_PATH / par_prefix)
     sub_mech = automech.io.read(DATA_PATH / sub_prefix)
 
-    exp_par_mech = automech.expand_parent_stereo(sub_mech=sub_mech, par_mech=par_mech)
+    exp_par_mech = automech.expand_parent_stereo(par_mech=par_mech, sub_mech=sub_mech)
     assert automech.reaction_count(exp_par_mech) == rcount
     assert automech.species_count(exp_par_mech) == scount
 

@@ -24,6 +24,7 @@ from .schema import (
     Species,
     SpeciesRenamed,
     SpeciesStereo,
+    SpeciesThermo,
 )
 from .util import df_
 
@@ -534,7 +535,7 @@ def _expand_species_stereo(
     return spc_df
 
 
-def expand_parent_stereo(sub_mech: Mechanism, par_mech: Mechanism) -> Mechanism:
+def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     """Apply the stereoexpansion of a submechanism to a parent mechanism.
 
     Produces an equivalent of the parent mechanism, containing the distinct
@@ -542,8 +543,8 @@ def expand_parent_stereo(sub_mech: Mechanism, par_mech: Mechanism) -> Mechanism:
     consideration of stereospecificity, and is simply designed to allow merging of a
     stereo-expanded submechanism into a parent mechanism.
 
-    :param sub_mech: A stereo-expanded sub-mechanism
     :param par_mech: A parent mechanism
+    :param sub_mech: A stereo-expanded sub-mechanism
     :return: An equivalent parent mechanism, with distinct stereoisomers from the
         sub-mechanism
     """
@@ -608,6 +609,32 @@ def expand_parent_stereo(sub_mech: Mechanism, par_mech: Mechanism) -> Mechanism:
         thermo_temps=thermo_temperatures(par_mech),
         rate_units=rate_units(par_mech),
     )
+
+
+def update_parent_thermo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
+    """Update the thermochemistry in a parent mechanism from a submechanism.
+
+    :param par_mech: A parent mechanism
+    :param sub_mech: A stereo-expanded sub-mechanism
+    :return: The parent mechanism, with updated thermo
+    """
+    par_spc_df = species(par_mech)
+    sub_spc_df = species(sub_mech)
+
+    key = SpeciesThermo.thermo_string
+    sub_therm_df = sub_spc_df.filter(polars.col(key).is_not_null())
+
+    key_ = f"{key}_right"
+    par_spc_df = par_spc_df.join(
+        sub_therm_df, how="left", on=Species.name
+    ).with_columns(
+        polars.when(polars.col(key_).is_not_null())
+        .then(polars.col(key_))
+        .otherwise(polars.col(key))
+        .alias(key)
+    )
+    par_spc_df = par_spc_df.drop(polars.selectors.ends_with("_right"))
+    return set_species(par_mech, par_spc_df)
 
 
 # comparison

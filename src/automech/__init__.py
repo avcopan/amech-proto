@@ -22,6 +22,7 @@ from ._mech import (
     species,
     species_count,
     string,
+    update_parent_thermo,
     with_species,
     without_unused_species,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "without_unused_species",
     "expand_stereo",
     "expand_parent_stereo",
+    "update_parent_thermo",
     # comparisons
     "are_equivalent",
     # read/write,
