@@ -70,7 +70,11 @@ def mechanism(
     """
     rxn_df = reactions(inp, out=out)
     spc_df = species(inp, out=spc_out)
-    return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    rate_units = reactions_units(inp)
+    thermo_temps = thermo_temperatures(inp)
+    return mechanism_from_data(
+        rxn_inp=rxn_df, spc_inp=spc_df, rate_units=rate_units, thermo_temps=thermo_temps
+    )
 
 
 # reactions
@@ -167,36 +171,12 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     ]
     spc_df = polars.DataFrame(data_lst)
 
+    therm_df = thermo(inp, spc_df=spc_df)
+    spc_df = spc_df if therm_df is None else therm_df
+
     df_.to_csv(spc_df, out)
 
     return spc_df
-
-
-def thermo(
-    inp: str, spc_df: polars.DataFrame | None = None, out: str | None = None
-) -> polars.DataFrame:
-    """Get thermodynamic data as a dataframe.
-
-    :param inp: A CHEMKIN mechanism, as a file path or string
-    :param spc_df: Optionally, join this to a species dataframe
-    :return: A thermo dataframe
-    """
-    therm_dct = therm_entry_dict(inp)
-    if therm_dct is None:
-        return None
-
-    data = {
-        Species.name: list(therm_dct.keys()),
-        SpeciesThermo.thermo_string: list(therm_dct.values()),
-    }
-    therm_df = polars.DataFrame(data)
-    if spc_df is not None:
-        therm_df = spc_df.join(therm_df, how="left", on=Species.name)
-        therm_df = schema.species_table(therm_df, models=(SpeciesThermo,))
-
-    df_.to_csv(therm_df, out)
-
-    return therm_df
 
 
 def species_block(inp: str, comments: bool = True) -> str:
@@ -220,7 +200,34 @@ def species_names(inp: str) -> list[str]:
 
 
 # therm
-def therm_block(inp: str, comments: bool = True) -> str:
+def thermo(
+    inp: str, spc_df: polars.DataFrame | None = None, out: str | None = None
+) -> polars.DataFrame:
+    """Get thermodynamic data as a dataframe.
+
+    :param inp: A CHEMKIN mechanism, as a file path or string
+    :param spc_df: Optionally, join this to a species dataframe
+    :return: A thermo dataframe
+    """
+    therm_dct = thermo_entry_dict(inp)
+    if therm_dct is None:
+        return None
+
+    data = {
+        Species.name: list(therm_dct.keys()),
+        SpeciesThermo.thermo_string: list(therm_dct.values()),
+    }
+    therm_df = polars.DataFrame(data)
+    if spc_df is not None:
+        therm_df = spc_df.join(therm_df, how="left", on=Species.name)
+        therm_df = schema.species_table(therm_df, models=(SpeciesThermo,))
+
+    df_.to_csv(therm_df, out)
+
+    return therm_df
+
+
+def thermo_block(inp: str, comments: bool = True) -> str:
     """Get the therm block, starting with 'THERM' and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -229,13 +236,13 @@ def therm_block(inp: str, comments: bool = True) -> str:
     return block(inp, KeyWord.THERM, comments=comments)
 
 
-def therm_temperatures(inp: str) -> list[float]:
+def thermo_temperatures(inp: str) -> list[float]:
     """Get the therm block temperatures.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The temperatures
     """
-    therm_block_str = therm_block(inp, comments=False)
+    therm_block_str = thermo_block(inp, comments=False)
     if therm_block_str is None:
         return None
 
@@ -244,13 +251,13 @@ def therm_temperatures(inp: str) -> list[float]:
     return list(map(float, temps))
 
 
-def therm_entries(inp: str) -> list[str]:
+def thermo_entries(inp: str) -> list[str]:
     """Get the therm block entries.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The entries
     """
-    therm_block_str = therm_block(inp, comments=False)
+    therm_block_str = thermo_block(inp, comments=False)
     if therm_block_str is None:
         return None
 
@@ -261,13 +268,13 @@ def therm_entries(inp: str) -> list[str]:
     return entries
 
 
-def therm_entry_dict(inp: str) -> dict[str, str]:
+def thermo_entry_dict(inp: str) -> dict[str, str]:
     """Get the therm block entries as a dictionary by species name.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: A dictionary mapping species names to therm block entries
     """
-    entries = therm_entries(inp)
+    entries = thermo_entries(inp)
     if entries is None:
         return None
 
@@ -325,7 +332,7 @@ def all_comments(inp: str) -> list[str]:
 
 def therm_temperature_expression() -> pp.ParseExpression:
     """Generate a pyparsing expression for the therm block temperatures."""
-    return pp.Opt(pp.Suppress(pp.CaselessKeyword("ALL"))) + ppc.number * 3
+    return pp.Suppress(...) + ppc.number * 3
 
 
 def therm_entry_expression() -> pp.ParseExpression:
