@@ -4,6 +4,7 @@ Eventually, we will want to add a "Raw" rate type with k(T,P) values stored in a
 """
 
 import abc
+import copy
 import dataclasses
 import enum
 from collections import defaultdict
@@ -12,8 +13,11 @@ from typing import Any
 
 import more_itertools as mit
 import numpy
+import pint
 import pyparsing as pp
 from pyparsing import pyparsing_common as ppc
+
+U = pint.UnitRegistry()
 
 MatrixLike = Sequence[Sequence[float]] | numpy.ndarray
 
@@ -107,6 +111,16 @@ class ArrheniusFunction:
         )
 
     __rmul__ = __mul__
+
+    def scale_e(self, factor: float | int):
+        """Scale the energy parameter by a factor (For converting energy units).
+
+        :param factor: The energy scale factor
+        :return: The new Arrhenius function
+        """
+        return ArrheniusFunction(
+            A=self.A, b=self.b, E=self.E * factor, B=self.B, C=self.C
+        )
 
 
 def arrhenius_function_from_data(
@@ -268,6 +282,15 @@ class Rate(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
+    def scale_e(self, factor: float | int):
+        """Scale the energy parameters by a factor (For converting energy units).
+
+        :param factor: The energy scale factor
+        :return: The new Arrhenius function
+        """
+        pass
+
 
 @add_dict_conversion(
     map_dct={
@@ -352,6 +375,20 @@ class SimpleRate(Rate):
 
     __rmul__ = __mul__
 
+    def scale_e(self, factor: float | int):
+        """Scale the energy parameters by a factor (For converting energy units).
+
+        :param factor: The energy scale factor
+        :return: The new Arrhenius function
+        """
+        return SimpleRate(
+            k=self.k.scale_e(factor),
+            k0=None if self.k0 is None else self.k0.scale_e(factor),
+            f=self.f,
+            is_rev=self.is_rev,
+            type_=self.type_,
+        )
+
 
 @add_dict_conversion(
     map_dct={
@@ -401,6 +438,20 @@ class PlogRate(Rate):
         )
 
     __rmul__ = __mul__
+
+    def scale_e(self, factor: float | int):
+        """Scale the energy parameters by a factor (For converting energy units).
+
+        :param factor: The energy scale factor
+        :return: The new Arrhenius function
+        """
+        return PlogRate(
+            ks=[k.scale_e(factor) for k in self.ks],
+            ps=self.ps,
+            k=None if self.k is None else self.k.scale_e(factor),
+            is_rev=self.is_rev,
+            type_=self.type_,
+        )
 
 
 @add_dict_conversion(
@@ -457,6 +508,17 @@ class ChebRate(Rate):
         )
 
     __rmul__ = __mul__
+
+    def scale_e(self, factor: float | int):
+        """Scale the energy parameters by a factor (For converting energy units).
+
+        (Does nothing for Chebyshev parametrization.)
+
+        :param factor: The energy scale factor
+        :return: The new Arrhenius function
+        """
+        assert factor or not factor
+        return copy.copy(self)
 
 
 # constructors
@@ -827,6 +889,22 @@ def plog_params_dict(
         return None
 
     return dict(zip(plog_pressures(rate), plog_params(rate, lt=lt), strict=True))
+
+
+# transformations
+# # common
+def convert_energy_units(rate: Rate, unit0: str, unit: str) -> Rate:
+    """Convert the energy units for a reaction rate.
+
+    :param rxn: A reaction object
+    :param unit0: The current energy unit
+    :param unit: The desired energy unit
+    :return: The reaction object, with new rate units
+    """
+    unit0 = str.lower(unit0)
+    unit = str.lower(unit)
+    factor = U.parse_expression(unit0).m_as(U.parse_expression(unit))
+    return rate.scale_e(factor)
 
 
 # I/O

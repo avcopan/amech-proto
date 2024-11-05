@@ -202,11 +202,12 @@ def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
     """Set the species dataframe for a mechanism.
 
     :param mech: The mechanism
+    :param spc_df: The new species dataframe
     :return: The mechanism with updated species
     """
     return from_data(
-        reactions(mech),
-        spc_df,
+        rxn_inp=reactions(mech),
+        spc_inp=spc_df,
         thermo_temps=thermo_temperatures(mech),
         rate_units=rate_units(mech),
     )
@@ -216,13 +217,65 @@ def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
     """Set the reactions dataframe for a mechanism.
 
     :param mech: The mechanism
+    :param rxn_df: The new reactions dataframe
     :return: The mechanism with updated reactions
     """
     return from_data(
-        rxn_df,
-        species(mech),
+        rxn_inp=rxn_df,
+        spc_inp=species(mech),
         thermo_temps=thermo_temperatures(mech),
         rate_units=rate_units(mech),
+    )
+
+
+def set_thermo_temperatures(
+    mech: Mechanism, temps: tuple[float, float, float] | None
+) -> Mechanism:
+    """Set the thermo temperatures for a mechanism.
+
+    :param mech: The mechanism
+    :param thermo_temps: The new thermo temperatures
+    :return: The thermo temperatures
+    """
+    return from_data(
+        rxn_inp=reactions(mech),
+        spc_inp=species(mech),
+        thermo_temps=temps,
+        rate_units=rate_units(mech),
+    )
+
+
+def set_rate_units(
+    mech: Mechanism, units: tuple[str, str] | None, scale_rates: bool = True
+) -> Mechanism:
+    """Get the rate units for a mechanism.
+
+    :param mech: The mechanism
+    :param units: The new rate units
+    :param scale_rates: Scale the rates if changing units?
+    :return: The rate units
+    """
+    rxn_df = reactions(mech)
+    units0 = rate_units(mech)
+    if scale_rates and units0 is not None:
+        e_unit0, a_unit0 = map(str.lower, units0)
+        e_unit, a_unit = map(str.lower, units)
+        assert (
+            a_unit == a_unit0
+        ), f"{a_unit} != {a_unit0} (A conversion not yet implemented)"
+
+        def _convert(rate_dct):
+            rate_obj = data.rate.from_data(**rate_dct)
+            rate_obj = data.rate.convert_energy_units(rate_obj, e_unit0, e_unit)
+            return dict(rate_obj)
+
+        rxn_df = df_.map_(rxn_df, ReactionRate.rate, ReactionRate.rate, _convert)
+
+    return from_data(
+        rxn_inp=rxn_df,
+        spc_inp=species(mech),
+        thermo_temps=thermo_temperatures(mech),
+        rate_units=units,
     )
 
 
@@ -245,17 +298,22 @@ def reaction_count(mech: Mechanism) -> int:
     return reactions(mech).select(polars.len()).item()
 
 
-def reacting_species_names(mech: Mechanism) -> list[str]:
-    """Get the names of the species that are involved in reactions.
+def species_names(mech: Mechanism, rxn_only: bool = False) -> list[str]:
+    """Get the names of species in the mechanism.
 
-    :param mech: The mechanism
-    :return: The names of reacting species
+    :param mech: A mechanism
+    :param rxn_only: Only include species that are involved in reactions?
+    :return: The species names
     """
-    rxn_df = reactions(mech)
-    eqs = rxn_df[Reaction.eq].to_list()
-    rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
-    names = list(mit.unique_everseen(itertools.chain(*rxn_names)))
-    return names
+    if rxn_only:
+        rxn_df = reactions(mech)
+        eqs = rxn_df[Reaction.eq].to_list()
+        rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
+        names = list(mit.unique_everseen(itertools.chain(*rxn_names)))
+        return names
+
+    spc_df = species(mech)
+    return spc_df[Species.name].to_list()
 
 
 def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
@@ -326,6 +384,26 @@ def rename(
         thermo_temps=thermo_temperatures(mech),
         rate_units=rate_units(mech),
     )
+
+
+def remove_all_reactions(mech: Mechanism) -> Mechanism:
+    """Clear the reactions from a mechanism.
+
+    :param mech: A mechanism
+    :return: The mechanism, without reactions
+    """
+    return set_reactions(mech, reactions(mech).clear())
+
+
+def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
+    """Add reactions from a DataFrame to a mechanism.
+
+    :param mech: A mechanism
+    :param rxn_df: A reactions dataframe
+    :return: The mechanism, with added reactions
+    """
+    rxn_df0 = reactions(mech)
+    return set_reactions(mech, polars.concat([rxn_df0, rxn_df], how="vertical_relaxed"))
 
 
 def with_species(
@@ -399,7 +477,7 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
     :return: The mechanism, without unused species
     """
     spc_df = species(mech)
-    used_names = reacting_species_names(mech)
+    used_names = species_names(mech, rxn_only=True)
     spc_df = spc_df.filter(polars.col(Species.name).is_in(used_names))
     return set_species(mech, spc_df)
 

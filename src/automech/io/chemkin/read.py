@@ -3,6 +3,7 @@
 import itertools
 import os
 import re
+from collections.abc import Collection
 from pathlib import Path
 
 import more_itertools as mit
@@ -78,10 +79,17 @@ def mechanism(
 
 
 # reactions
-def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
+def reactions(
+    inp: str,
+    units: tuple[str, str] | None = None,
+    spc_names: Collection[str] | None = None,
+    out: str | None = None,
+) -> polars.DataFrame:
     """Extract reaction information as a dataframe from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
+    :param units: Convert the rates to these units, if needed
+    :param spc_names: Only include reactions involving these species
     :param out: Optionally, write the output to this file path
     :return: The reactions dataframe
     """
@@ -97,6 +105,22 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     rxn_strs = list(map("\n".join, mit.split_before(line_iter, _is_reaction_line)))
 
     rxns = list(map(data.reac.from_chemkin_string, rxn_strs))
+
+    # Filter by species
+    if spc_names is not None:
+        spc_names = set(spc_names)
+        rxns = [r for r in rxns if set(data.reac.species(r)) <= spc_names]
+
+    # Convert energy units
+    if units is not None:
+        e_unit0, a_unit0 = map(str.lower, reactions_units(inp))
+        e_unit, a_unit = map(str.lower, units)
+        assert (
+            a_unit == a_unit0
+        ), f"{a_unit} != {a_unit0} (A conversion not yet implemented)"
+        rxns = [data.reac.convert_energy_units(r, e_unit0, e_unit) for r in rxns]
+
+    # Prepare data columns
     eqs = list(map(data.reac.equation, rxns))
     rates = list(map(dict, map(data.reac.rate, rxns)))
     coll_dcts = list(map(data.reac.colliders, rxns))
@@ -104,6 +128,7 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     # with an empty collider dictionary
     coll_dcts = [{"M": None} if d is None else d for d in coll_dcts]
 
+    # Build dataframe
     data_dct = {
         Reaction.eq: eqs,
         ReactionRate.rate: rates,
@@ -113,6 +138,12 @@ def reactions(inp: str, out: str | None = None) -> polars.DataFrame:
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
     rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
+
+    # # Handle units
+    # if units is not None:
+    #     units0 = list(map(str.lower, reactions_units(inp)))
+    #     units = list(map(str.lower, units))
+
     df_.to_csv(rxn_df, out)
 
     return rxn_df
