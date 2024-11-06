@@ -15,6 +15,7 @@ from ._mech import (
     from_string,
     rate_units,
     reaction_count,
+    reaction_equations,
     reactions,
     remove_all_reactions,
     rename,
@@ -54,6 +55,7 @@ __all__ = [
     "species_count",
     "reaction_count",
     "species_names",
+    "reaction_equations",
     "rename_dict",
     # transformations
     "rename",

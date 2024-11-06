@@ -234,13 +234,17 @@ def is_falloff(rxn: Reaction) -> bool:
     return rt_.is_falloff(rate(rxn))
 
 
-def equation(rxn: Reaction, sort: bool = False) -> str:
+def equation(rxn: Reaction, sort_reag: bool = False, sort_dir: bool = False) -> str:
     """Get the CHEMKIN equation of a reaction (excludes collider term).
 
     :param rxn: A reaction object
+    :param sort_reag: Sort the reagents on each side of the reaction?
+    :param sort_dir: Sort the direction of the reaction?
     :return: The reaction CHEMKIN equation
     """
-    return write_chemkin_equation(reactants(rxn), products(rxn))
+    return write_chemkin_equation(
+        reactants(rxn), products(rxn), sort_reag=sort_reag, sort_dir=sort_dir
+    )
 
 
 def chemkin_collider(rxn: Reaction) -> str | None:
@@ -278,15 +282,21 @@ def chemkin_equation(
     """Get the CHEMKIN equation of a reaction (includes collider term).
 
     :param rxn: A reaction object
-    :param sort_dir: Sort the direction of the reaction, if reversible?
+    :param sort_reag: Sort the reagents on each side of the reaction?
+    :param sort_dir: Sort the direction of the reaction?
     :return: The reaction CHEMKIN equation
     """
     is_rev = rt_.is_reversible(rate(rxn))
     rcts, prds, coll = chemkin_reagents(rxn, sort=sort_reag)
-    if sort_dir and is_rev:
-        rcts, prds = sorted((rcts, prds))
     arrow = "=" if is_rev else "=>"
-    return write_chemkin_equation(rcts, prds, coll=coll, arrow=arrow)
+    return write_chemkin_equation(
+        rcts,
+        prds,
+        coll=coll,
+        arrow=arrow,
+        sort_reag=sort_reag,
+        sort_dir=sort_dir,
+    )
 
 
 def chemkin_duplicate_key(rxn: Reaction) -> str:
@@ -295,7 +305,8 @@ def chemkin_duplicate_key(rxn: Reaction) -> str:
     :param rxn: A reaction object
     :return: The reaction CHEMKIN equation
     """
-    return (chemkin_equation(rxn, sort_reag=True, sort_dir=True), rate_type(rxn))
+    is_rev = rt_.is_reversible(rate(rxn))
+    return (chemkin_equation(rxn, sort_reag=True, sort_dir=is_rev), rate_type(rxn))
 
 
 # transformations
@@ -422,13 +433,19 @@ def from_chemkin_string(rxn_str: str) -> Reaction:
 
 
 # Chemkin equation helpers
-def standardize_chemkin_equation(eq: str) -> str:
+def standardize_chemkin_equation(
+    eq: str, sort_reag: bool = False, sort_dir: bool = False
+) -> str:
     """Standardize the format of a CHEMKIN equation for string comparison.
 
     :param eq: The reaction CHEMKIN equation
+    :param sort_reag: Sort the reagents on each side of the reaction?
+    :param sort_dir: Sort the direction of the reaction?
     :return: The reaction CHEMKIN equation in standard format
     """
-    return write_chemkin_equation(*read_chemkin_equation(eq))
+    return write_chemkin_equation(
+        *read_chemkin_equation(eq), sort_reag=sort_reag, sort_dir=sort_dir
+    )
 
 
 def write_chemkin_equation(
@@ -437,6 +454,8 @@ def write_chemkin_equation(
     coll: str | None = None,
     arrow: str = "=",
     trans_dct: dict[str, str] | None = None,
+    sort_reag: bool = False,
+    sort_dir: bool = False,
 ) -> str:
     """Write the CHEMKIN equation of a reaction to a string.
 
@@ -444,6 +463,8 @@ def write_chemkin_equation(
     :param prds: The product names
     :param coll: The collider
     :param trans_dct: Optionally, translate the species names using a dictionary
+    :param sort_reag: Sort the reagents on each side of the reaction?
+    :param sort_dir: Sort the direction of the reaction?
     :return: The reaction CHEMKIN equation
     """
 
@@ -452,6 +473,13 @@ def write_chemkin_equation(
 
     rcts_ = list(map(trans_, rcts))
     prds_ = list(map(trans_, prds))
+
+    if sort_reag:
+        rcts_ = sorted(rcts_)
+        prds_ = sorted(prds_)
+
+    if sort_dir:
+        rcts_, prds_ = sorted([rcts_, prds_])
 
     assert all(
         isinstance(n, str) for n in rcts_ + prds_

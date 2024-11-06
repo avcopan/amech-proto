@@ -316,6 +316,16 @@ def species_names(mech: Mechanism, rxn_only: bool = False) -> list[str]:
     return spc_df[Species.name].to_list()
 
 
+def reaction_equations(mech: Mechanism) -> list[str]:
+    """Get the equations of reactions in the mechanism.
+
+    :param mech: A mechanism
+    :return: The reaction equations
+    """
+    rxn_df = reactions(mech)
+    return rxn_df[Reaction.eq].to_list()
+
+
 def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
     """Generate a dictionary for renaming species names from one mechanism to another.
 
