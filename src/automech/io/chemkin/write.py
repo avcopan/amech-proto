@@ -120,9 +120,7 @@ def reactions_block(mech: Mechanism) -> str:
 
     # Detect duplicates
     rxn_df = df_.map_(rxn_df, "obj", "dup_key", reac.chemkin_duplicate_key)
-    rxn_df = rxn_df.with_columns(
-        polars.col("dup_key").list.to_struct().is_duplicated().alias("dup")
-    )
+    rxn_df = rxn_df.with_columns(polars.col("dup_key").is_duplicated().alias("dup"))
 
     # Generate the CHEMKIN strings for each reaction
     rxn_strs = [

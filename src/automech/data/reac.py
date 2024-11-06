@@ -306,7 +306,7 @@ def chemkin_duplicate_key(rxn: Reaction) -> str:
     :return: The reaction CHEMKIN equation
     """
     is_rev = rt_.is_reversible(rate(rxn))
-    return (chemkin_equation(rxn, sort_reag=True, sort_dir=is_rev), rate_type(rxn))
+    return chemkin_equation(rxn, sort_reag=True, sort_dir=is_rev)
 
 
 # transformations
