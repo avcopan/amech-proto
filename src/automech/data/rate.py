@@ -579,9 +579,16 @@ def from_chemkin_string(
     :param has_third_body: Is this a reaction with a third body?
     :return: The reaction rate object
     """
+    # Split off the equation
+    lines = rate_str.strip().splitlines()
+    first_line = lines[0]
+    k = list(map(float, first_line.split()[-3:]))
+
+    aux_str = "\n".join(lines[1:])
+
     # Parse the string
-    rate_expr = chemkin_rate_expr()
-    res = rate_expr.parseString(rate_str).as_dict()
+    rate_expr = chemkin_aux_lines_expr()
+    res = rate_expr.parseString(aux_str).as_dict()
 
     keywords = ("PLOG", "LOW", "HIGH", "PLOG", "TCHEB", "PCHEB", "CHEB", "TROE")
 
@@ -596,7 +603,6 @@ def from_chemkin_string(
 
     # Pre-process rate type data
     type_ = RateType.CONSTANT if coll is None else RateType.THIRD_BODY
-    k = res.get("params")
     k0 = None
     if "LOW" in aux_dct:
         k0 = aux_dct.get("LOW")
@@ -1085,9 +1091,9 @@ def write_number(
     return f"{num:>{max_width}.{decimals}f}"
 
 
-def chemkin_rate_expr() -> pp.ParseExpression:
+def chemkin_aux_lines_expr() -> pp.ParseExpression:
     """Get the parse expression for chemkin rates."""
-    return RATE_EXPR
+    return AUX_LINES
 
 
 def number_list_expr(
@@ -1101,7 +1107,7 @@ def number_list_expr(
     :return: The parse expression
     """
     nmax = nmin if nmax is None else nmax
-    return pp.delimitedList(ppc.number.copy(), delim=delim, min=nmin, max=nmax)
+    return pp.DelimitedList(ppc.number.copy(), delim=delim, min=nmin, max=nmax)
 
 
 SLASH = pp.Suppress(pp.Literal("/"))
@@ -1117,6 +1123,4 @@ COLL_NAME = pp.Word(pp.printables, exclude_chars="/")
 COLL_PARAM = SLASH + ppc.number + SLASH
 COLL_LINE = pp.Group(COLL_NAME + COLL_PARAM)
 AUX_LINE = COLL_LINE ^ pp.Group(AUX_KEYWORD + pp.Optional(AUX_PARAMS))
-RATE_EXPR = (
-    pp.Suppress(...) + ARRH_PARAMS("params") + pp.Group(pp.ZeroOrMore(AUX_LINE))("aux")
-)
+AUX_LINES = pp.Suppress(...) + pp.Group(pp.ZeroOrMore(AUX_LINE))("aux")
