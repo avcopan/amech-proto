@@ -97,6 +97,7 @@ def map_(
         vals_lst = list(zip(*vals, strict=True))
         nvals = len(vals_lst)
         assert len(out_) == nvals, f"Cannot match {nvals} output values to keys {out_}"
+        dtype_ = (None,) * nvals if dtype_ is None else dtype_
 
     assert len(out_) == len(dtype_), f"Cannot match {dtype_} dtypes to keys {out_}"
 

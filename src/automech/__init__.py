@@ -28,6 +28,7 @@ from ._mech import (
     species_names,
     string,
     thermo_temperatures,
+    update_parent_rates,
     update_parent_thermo,
     with_species,
     without_unused_species,
@@ -63,6 +64,7 @@ __all__ = [
     "expand_stereo",
     "expand_parent_stereo",
     "update_parent_thermo",
+    "update_parent_rates",
     # comparisons
     "are_equivalent",
     # read/write,
