@@ -699,6 +699,49 @@ def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     )
 
 
+def drop_parent_duplicate_reactions(
+    par_mech: Mechanism, sub_mech: Mechanism
+) -> Mechanism:
+    """Drop equivalent reactions from a submechanism in a parent mechanism.
+
+    :param par_mech: A parent mechanism
+    :param sub_mech: A stereo-expanded sub-mechanism
+    :return: The parent mechanism, with updated rates
+    """
+    par_rxn_df = reactions(par_mech)
+    sub_rxn_df = reactions(without_unused_species(sub_mech))
+
+    # Form species mappings onto AMChIs without stereo
+    par_spc_df = species(par_mech)
+    sub_spc_df = species(sub_mech)
+    par_spc_df: polars.DataFrame = df_.map_(
+        par_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo
+    )
+    sub_spc_df: polars.DataFrame = df_.map_(
+        sub_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo
+    )
+    par_key_dct = df_.lookup_dict(par_spc_df, Species.name, "amchi0")
+    sub_key_dct = df_.lookup_dict(sub_spc_df, Species.name, "amchi0")
+    par_spc_df = par_spc_df.drop("amchi0")
+    sub_spc_df = sub_spc_df.drop("amchi0")
+
+    # Add unique reaction keys for identifying the correspondence
+    par_rxn_df = reac_table.with_reaction_key(
+        par_rxn_df, "key", spc_key_dct=par_key_dct
+    )
+    sub_rxn_df = reac_table.with_reaction_key(
+        sub_rxn_df, "key", spc_key_dct=sub_key_dct
+    )
+
+    # Remove overlapping reactions from parent mechanism and add them from submechanism
+    is_in_sub = polars.col("key").is_in(sub_rxn_df["key"])
+    par_rxn_df = par_rxn_df.filter(~is_in_sub)
+    par_rxn_df = par_rxn_df.drop("key")
+
+    par_mech = set_reactions(par_mech, par_rxn_df)
+    return par_mech
+
+
 def update_parent_thermo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     """Update the thermochemistry in a parent mechanism from a submechanism.
 

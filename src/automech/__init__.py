@@ -8,6 +8,7 @@ from ._mech import (
     display,
     display_reactions,
     display_species,
+    drop_parent_duplicate_reactions,
     expand_parent_stereo,
     expand_stereo,
     from_data,
@@ -65,6 +66,7 @@ __all__ = [
     "without_unused_species",
     "expand_stereo",
     "expand_parent_stereo",
+    "drop_parent_duplicate_reactions",
     "update_parent_thermo",
     "update_parent_rates",
     # comparisons
