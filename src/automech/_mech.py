@@ -496,7 +496,7 @@ def expand_stereo(
     mech: Mechanism,
     enant: bool = True,
     strained: bool = False,
-    drop_unused: bool = True,
+    drop_unused: bool = False,
 ) -> tuple[Mechanism, Mechanism]:
     """Expand stereochemistry for a mechanism.
 
@@ -521,13 +521,14 @@ def expand_stereo(
         spc_df, (SpeciesStereo.orig_name, Species.amchi), Species.name
     )
 
-    def _expand_amchi(orig_eq):
+    def _expand_reaction(orig_eq):
         """Classify a reaction and return the reaction objects."""
         rname0s, pname0s, coll, arrow = data.reac.read_chemkin_equation(orig_eq)
         rchi0s = list(map(chi_dct.get, rname0s))
         pchi0s = list(map(chi_dct.get, pname0s))
         objs = automol.reac.from_amchis(rchi0s, pchi0s, stereo=False)
-        vals = []
+        eqs = []
+        chis = []
         for obj in objs:
             sobjs = automol.reac.expand_stereo(obj, enant=enant, strained=strained)
             for sobj in sobjs:
@@ -538,30 +539,30 @@ def expand_stereo(
                 rnames = tuple(map(name_dct.get, zip(rname0s, rchis, strict=True)))
                 pnames = tuple(map(name_dct.get, zip(pname0s, pchis, strict=True)))
                 if not all(isinstance(n, str) for n in rnames + pnames):
-                    return polars.Null
+                    return ([], [])
 
                 eq = data.reac.write_chemkin_equation(rnames, pnames, coll, arrow)
-                vals.append([eq, chi])
-        return vals if vals else polars.Null
+                eqs.append(eq)
+                chis.append(chi)
+        return eqs, chis
 
-    tmp_col = "tmp"
-    rxn_df = df_.map_(rxn_df, Reaction.eq, tmp_col, _expand_amchi)
+    rxn_df = rxn_df.rename({Reaction.eq: ReactionStereo.orig_eq})
+    rxn_df = df_.map_(
+        rxn_df,
+        ReactionStereo.orig_eq,
+        (Reaction.eq, ReactionStereo.amchi),
+        _expand_reaction,
+    )
 
     # Separate out the error cases
-    err_df = rxn_df.filter(polars.col(tmp_col).is_null())
-    rxn_df = rxn_df.filter(polars.col(tmp_col).is_not_null())
+    err_df = rxn_df.filter(polars.col(Reaction.eq).list.len() == 0)
+    rxn_df = rxn_df.filter(polars.col(Reaction.eq).list.len() != 0)
 
     # Expand the table by stereoisomers
-    err_df = err_df.drop(tmp_col)
-    rxn_df = rxn_df.explode(polars.col(tmp_col))
-
-    # Split the AMChI and equation columns
-    rxn_df = rxn_df.rename({Reaction.eq: ReactionStereo.orig_eq})
-    rxn_df = rxn_df.with_columns(
-        polars.col(tmp_col)
-        .list.to_struct()
-        .struct.rename_fields([Reaction.eq, ReactionStereo.amchi])
-    ).unnest(tmp_col)
+    err_df = err_df.drop(Reaction.eq, ReactionStereo.amchi).rename(
+        {ReactionStereo.orig_eq: Reaction.eq}
+    )
+    rxn_df = rxn_df.explode(Reaction.eq, ReactionStereo.amchi)
 
     mech = from_data(
         rxn_df,

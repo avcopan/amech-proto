@@ -434,17 +434,24 @@ def from_chemkin_string(rxn_str: str) -> Reaction:
 
 # Chemkin equation helpers
 def standardize_chemkin_equation(
-    eq: str, sort_reag: bool = False, sort_dir: bool = False
+    eq: str,
+    sort_reag: bool = False,
+    sort_dir: bool = False,
+    trans_dct: dict[str, str] | None = None,
 ) -> str:
     """Standardize the format of a CHEMKIN equation for string comparison.
 
     :param eq: The reaction CHEMKIN equation
     :param sort_reag: Sort the reagents on each side of the reaction?
     :param sort_dir: Sort the direction of the reaction?
+    :param trans_dct: Optionally, translate the species names using a dictionary
     :return: The reaction CHEMKIN equation in standard format
     """
     return write_chemkin_equation(
-        *read_chemkin_equation(eq), sort_reag=sort_reag, sort_dir=sort_dir
+        *read_chemkin_equation(eq),
+        sort_reag=sort_reag,
+        sort_dir=sort_dir,
+        trans_dct=trans_dct,
     )
 
 

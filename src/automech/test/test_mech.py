@@ -57,7 +57,7 @@ def test__expand_stereo(
 ):
     """Test automech.expand_stereo."""
     mech = automech.from_smiles(rxn_smis=rxn_smis)
-    mech, err_mech = automech.expand_stereo(mech)
+    mech, err_mech = automech.expand_stereo(mech, drop_unused=True)
     print(mech)
     print(err_mech)
     rcount = automech.reaction_count(mech)

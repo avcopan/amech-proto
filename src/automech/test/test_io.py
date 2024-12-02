@@ -29,7 +29,7 @@ def check_counts(mech, ref_nrxns, ref_nspcs):
     [
         ("butane.dat", 101, 76, False),
         ("ethylene.dat", 26, 31, False),
-        ("webb_sample.inp", 11, 16, True),
+        ("webb_sample.inp", 12, 18, True),
     ],
 )
 def test__chemkin(mech_file_name, nrxns, nspcs, roundtrip):
@@ -95,7 +95,7 @@ def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
     "rxn_file_name, spc_file_name, nrxns, nspcs",
     [
         ("cyclopentene.dat", "cyclopentene_species.txt", 100, 63),
-        ("webb_sample.inp", "webb_sample_species.txt", 11, 16),
+        ("webb_sample.inp", "webb_sample_species.txt", 12, 18),
     ],
 )
 def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
