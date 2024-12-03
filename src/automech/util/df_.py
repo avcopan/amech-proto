@@ -3,9 +3,7 @@
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-import narwhals
 import polars
-from narwhals.typing import FrameT
 from tqdm.auto import tqdm
 
 Key = str
@@ -50,16 +48,15 @@ def to_csv(
         df.write_csv(path, **kwargs)
 
 
-@narwhals.narwhalify
 def map_(
-    df: FrameT,
+    df: polars.DataFrame,
     in_: Key_,
     out_: Key_ | None,
     func_: Callable,
     dct: dict[object, object] | None = None,
     dtype_: polars.DataType | Sequence[polars.DataType] | None = None,
     bar: bool = True,
-) -> FrameT:
+) -> polars.DataFrame:
     """Map columns from a dataframe onto a new column.
 
     :param df: The dataframe
@@ -103,14 +100,13 @@ def map_(
 
     for out, dtype, vals in zip(out_, dtype_, vals_lst, strict=True):
         col = polars.Series(name=out, values=vals, dtype=dtype, strict=False)
-        df = df.with_columns(narwhals.from_native(col, series_only=True))
+        df = df.with_columns(col)
 
     return df
 
 
-@narwhals.narwhalify
 def lookup_dict(
-    df: FrameT, in_: Key_ | None = None, out_: Key_ | None = None
+    df: polars.DataFrame, in_: Key_ | None = None, out_: Key_ | None = None
 ) -> dict[Value_, Value_]:
     """Form a lookup dictionary mapping one column onto another in a dataframe.
 
