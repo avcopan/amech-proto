@@ -9,6 +9,7 @@ from pathlib import Path
 
 import automol
 import more_itertools as mit
+import networkx
 import polars
 import pyvis
 
@@ -27,6 +28,8 @@ from .schema import (
     SpeciesThermo,
 )
 from .util import df_
+
+DEFAULT_EXCLUDE_FORMULAS = ("H*O*", "CH*")
 
 
 @dataclasses.dataclass
@@ -393,6 +396,36 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     return name_dct, missing_names
 
 
+def network(
+    mech: Mechanism, node_exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS
+) -> networkx.Graph:
+    """Generate a network graph representation of the mechanism.
+
+    :param mech: A mechanism
+    :param node_exclude_formulas: A list of formulas for species to be excluded as
+        nodes, defaults to ()
+    :return: The mechanism network
+    """
+
+    def _node_data_from_dicts(dcts: Sequence[dict]) -> dict:
+        names = [d.pop(Species.name) for d in dcts]
+        return dict(zip(names, dcts, strict=True))
+
+    excl_spc_names = species_names(mech, formulas=node_exclude_formulas)
+
+    spc_df = species(mech)
+    excl_spc_df = spc_df.filter(polars.col(Species.name).is_in(excl_spc_names))
+    incl_spc_df = spc_df.filter(~polars.col(Species.name).is_in(excl_spc_names))
+
+    incl_spc_data = _node_data_from_dicts(incl_spc_df.to_dicts())
+    excl_spc_data = _node_data_from_dicts(excl_spc_df.to_dicts())
+
+    mech_net = networkx.Graph(**excl_spc_data)
+    mech_net.add_nodes_from(incl_spc_data)
+
+    print(networkx.adjacency_data(mech_net))
+
+
 # transformations
 def rename(
     mech: Mechanism, name_dct: dict[str, str], drop_missing: bool = False
@@ -461,7 +494,7 @@ def neighborhood(
     mech: Mechanism,
     spc_names: Sequence[str] = (),
     order: int = 1,
-    exclude_formulas: tuple[str, ...] = ("H*", "OH*", "O2H*", "CH*"),
+    exclude_formulas: tuple[str, ...] = DEFAULT_EXCLUDE_FORMULAS,
 ) -> Mechanism:
     """Determine the n^th neighborhood of a subset of species.
 
@@ -881,7 +914,7 @@ def from_string(mech_str: str) -> Mechanism:
 def display(
     mech: Mechanism,
     stereo: bool = True,
-    exclude_formulas: tuple[str, ...] = ("H*", "OH*", "O2H*", "CH*"),
+    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
