@@ -298,22 +298,52 @@ def reaction_count(mech: Mechanism) -> int:
     return reactions(mech).select(polars.len()).item()
 
 
-def species_names(mech: Mechanism, rxn_only: bool = False) -> list[str]:
+def species_names(
+    mech: Mechanism,
+    rxn_only: bool = False,
+    formulas: Sequence[str] | None = None,
+    exclude_formulas: Sequence[str] = (),
+) -> list[str]:
     """Get the names of species in the mechanism.
 
     :param mech: A mechanism
     :param rxn_only: Only include species that are involved in reactions?
+    :param formulas: Formula strings of species to include, using * for wildcard
+        stoichiometry
+    :param exclude_formulas: Formula strings of species to exclude, using * for wildcard
+        stoichiometry
     :return: The species names
     """
-    if rxn_only:
-        rxn_df = reactions(mech)
-        eqs = rxn_df[Reaction.eq].to_list()
-        rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
-        names = list(mit.unique_everseen(itertools.chain(*rxn_names)))
-        return names
+
+    def _formula_matcher(fml_strs):
+        """Determine whether a species is excluded."""
+        fmls = list(map(automol.form.from_string, fml_strs))
+
+        def _matches_formula(chi):
+            fml = automol.amchi.formula(chi)
+            return any(automol.form.match(fml, e) for e in fmls)
+
+        return _matches_formula
 
     spc_df = species(mech)
-    return spc_df[Species.name].to_list()
+
+    if formulas is not None:
+        spc_df = df_.map_(spc_df, Species.amchi, "match", _formula_matcher(formulas))
+        spc_df = spc_df.filter(polars.col("match"))
+
+    if exclude_formulas:
+        spc_df = df_.map_(
+            spc_df, Species.amchi, "match", _formula_matcher(exclude_formulas)
+        )
+        spc_df = spc_df.filter(~polars.col("match"))
+
+    spc_names = spc_df[Species.name].to_list()
+
+    if rxn_only:
+        rxn_spc_names = reaction_species_names(mech)
+        spc_names = [n for n in spc_names if n in rxn_spc_names]
+
+    return spc_names
 
 
 def reaction_equations(mech: Mechanism) -> list[str]:
@@ -324,6 +354,17 @@ def reaction_equations(mech: Mechanism) -> list[str]:
     """
     rxn_df = reactions(mech)
     return rxn_df[Reaction.eq].to_list()
+
+
+def reaction_species_names(mech: Mechanism) -> list[str]:
+    """Get the names of all species that participate in reactions.
+
+    :param mech: A mechanism
+    :return: The reaction species
+    """
+    eqs = reaction_equations(mech)
+    rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
+    return list(mit.unique_everseen(itertools.chain(*rxn_names)))
 
 
 def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], list[str]]:
@@ -414,6 +455,34 @@ def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
     """
     rxn_df0 = reactions(mech)
     return set_reactions(mech, polars.concat([rxn_df0, rxn_df], how="diagonal_relaxed"))
+
+
+def neighborhood(
+    mech: Mechanism,
+    spc_names: Sequence[str] = (),
+    order: int = 1,
+    exclude_formulas: tuple[str, ...] = ("H*", "OH*", "O2H*", "CH*"),
+) -> Mechanism:
+    """Determine the n^th neighborhood of a subset of species.
+
+    Determined as follows:
+        1. Select all reactions involving the current species list
+        2. Add any new species from these reactions to the species list
+        3. Repeat n times
+
+    :param mech: A mechanism
+    :param spc_names: A list of species names, defaults to ()
+    :param exclude_formulas: Formula strings of molecules to exclude from the network,
+        using * for wildcard stoichiometry, defaults to ("H*", "OH*", "O2H*", "CH*")
+    :return: The nth neighborhood mechanism
+    """
+    mech0 = mech
+    for _ in range(order):
+        mech = with_species(mech0, spc_names=spc_names, strict=False)
+        spc_names = species_names(
+            mech, rxn_only=True, exclude_formulas=exclude_formulas
+        )
+    return mech
 
 
 def with_species(
@@ -831,7 +900,6 @@ def display(
     out_dir.mkdir(exist_ok=True)
     img_dir = Path("img")
     (out_dir / img_dir).mkdir(exist_ok=True)
-    excl_fmls = tuple(map(automol.form.from_string, exclude_formulas))
     net = pyvis.network.Network(directed=True, notebook=True, cdn_resources="in_line")
 
     # Read in the mechanism data
@@ -842,14 +910,8 @@ def display(
         print(f"The reaction network is empty. Skipping visualization...\n{mech}")
         return
 
-    # Define some functions
-    def _is_excluded(chi):
-        """Determine whether a species is excluded."""
-        fml = automol.amchi.formula(chi)
-        return any(automol.form.match(fml, e) for e in excl_fmls)
-
-    spc_df = df_.map_(spc_df, Species.amchi, "excluded", _is_excluded)
-    excl_names = list(spc_df.filter(polars.col("excluded"))[Species.name])
+    # Determine the names of the species to be excluded
+    excl_names = species_names(mech, formulas=exclude_formulas)
 
     def _image_path(chi):
         """Create an SVG molecule drawing and return the path."""
