@@ -14,7 +14,7 @@ from pyparsing import common as ppc
 from ... import data, schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
+from ...schema import ReactionOld, ReactionRate, Species, SpeciesThermo
 from ...util import df_
 
 
@@ -130,14 +130,14 @@ def reactions(
 
     # Build dataframe
     data_dct = {
-        Reaction.eq: eqs,
+        ReactionOld.eq: eqs,
         ReactionRate.rate: rates,
         ReactionRate.colliders: coll_dcts,
     }
-    schema_dct = schema.types([Reaction, ReactionRate])
+    schema_dct = schema.types([ReactionOld, ReactionRate])
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
-    rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
+    rxn_df = schema.reaction_table(rxn_df, models=(ReactionOld, ReactionRate))
 
     # # Handle units
     # if units is not None:

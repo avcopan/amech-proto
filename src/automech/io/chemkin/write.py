@@ -9,7 +9,7 @@ import polars
 from ... import _mech
 from ..._mech import Mechanism
 from ...data import reac
-from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
+from ...schema import ReactionOld, ReactionRate, Species, SpeciesThermo
 from ...util import df_
 from .read import KeyWord
 
@@ -108,7 +108,7 @@ def reactions_block(mech: Mechanism) -> str:
     rxn_df = _mech.reactions(mech)
     rxn_df = df_.map_(
         rxn_df,
-        [Reaction.eq, ReactionRate.rate, ReactionRate.colliders],
+        [ReactionOld.eq, ReactionRate.rate, ReactionRate.colliders],
         "obj",
         _reaction_object,
         dtype_=object,

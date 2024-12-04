@@ -31,7 +31,8 @@ from ._mech import (
     species_names,
     string,
     thermo_temperatures,
-    update_parent_thermo,
+    update_parent_reaction_data,
+    update_parent_species_data,
     with_species,
     without_unused_species,
 )
@@ -68,7 +69,8 @@ __all__ = [
     "expand_stereo",
     "expand_parent_stereo",
     "drop_parent_reactions",
-    "update_parent_thermo",
+    "update_parent_species_data",
+    "update_parent_reaction_data",
     # comparisons
     "are_equivalent",
     # read/write,

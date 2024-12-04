@@ -1,5 +1,7 @@
 """Functions acting on reactions dataframes."""
 
+from collections.abc import Mapping, Sequence
+
 import polars
 
 from . import data
@@ -28,9 +30,41 @@ def with_reaction_key(
     :return: A reactions dataframe with this key as a new column
     """
 
-    def _key(eq):
-        rcts, prds, *_ = data.reac.read_chemkin_equation(eq, trans_dct=spc_key_dct)
+    def _key(rct0s, prd0s):
+        rcts = list(map(spc_key_dct.get, rct0s))
+        prds = list(map(spc_key_dct.get, prd0s))
         rcts, prds = sorted([sorted(rcts), sorted(prds)])
         return data.reac.write_chemkin_equation(rcts, prds)
 
-    return df_.map_(rxn_df, Reaction.eq, col_name, _key)
+    return df_.map_(rxn_df, (Reaction.reactants, Reaction.products), col_name, _key)
+
+
+def translate_reagents(
+    rxn_df: polars.DataFrame,
+    trans: Sequence[object] | Mapping[object, object],
+    trans_into: Sequence[object] | None = None,
+    rcol_out: str = Reaction.reactants,
+    pcol_out: str = Reaction.products,
+) -> polars.DataFrame:
+    """Translate the reagent names in a reactions dataframe.
+
+    :param rxn_df: A reactions dataframe
+    :param trans: A translation mapping or a sequence of values to replace
+    :param trans_into: If `trans` is a sequence, a sequence of values to replace by,
+        defaults to None
+    :param rcol_out: The column name to use for the reactants
+    :param pcol_out: The column name to use for the products
+    :return: The updated reactions dataframe
+    """
+
+    def _translate(col_in: str, col_out: str) -> polars.Expr:
+        return (
+            polars.col(col_in)
+            .list.eval(polars.element().replace(old=trans, new=trans_into))
+            .alias(col_out)
+        )
+
+    return rxn_df.with_columns(
+        _translate(Reaction.reactants, rcol_out),
+        _translate(Reaction.products, pcol_out),
+    )

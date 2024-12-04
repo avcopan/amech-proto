@@ -27,6 +27,13 @@ class Species(Model):
 class Reaction(Model):
     """Core reaction table."""
 
+    reactants: list[str]
+    products: list[str]
+
+
+class ReactionOld(Model):
+    """Core reaction table."""
+
     eq: str
 
 
@@ -53,7 +60,8 @@ class SpeciesRenamed(Model):
 class ReactionRenamed(Model):
     """Renamed reaction table."""
 
-    orig_eq: str
+    orig_reactants: str
+    orig_products: str
 
 
 class SpeciesStereo(Model):
@@ -68,7 +76,8 @@ class ReactionStereo(Model):
     """Stereo-expanded reaction table."""
 
     amchi: str
-    orig_eq: str
+    orig_reactants: str
+    orig_products: str
 
 
 class ReactionMisc(Model):
