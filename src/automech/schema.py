@@ -31,12 +31,6 @@ class Reaction(Model):
     products: list[str]
 
 
-class ReactionOld(Model):
-    """Core reaction table."""
-
-    eq: str
-
-
 # Extended tables
 class ReactionRate(Model):
     """Reaction table with rate."""

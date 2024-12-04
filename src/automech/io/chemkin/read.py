@@ -14,7 +14,7 @@ from pyparsing import common as ppc
 from ... import data, schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import ReactionOld, ReactionRate, Species, SpeciesThermo
+from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
 from ...util import df_
 
 
@@ -117,11 +117,12 @@ def reactions(
         e_unit, a_unit = map(str.lower, units)
         assert (
             a_unit == a_unit0
-        ), f"{a_unit} != {a_unit0} (A conversion not yet implemented)"
+        ), f"{a_unit} != {a_unit0} (conversion of 'a' not yet implemented)"
         rxns = [data.reac.convert_energy_units(r, e_unit0, e_unit) for r in rxns]
 
     # Prepare data columns
-    eqs = list(map(data.reac.equation, rxns))
+    reactants_lst = list(map(data.reac.reactants, rxns))
+    products_lst = list(map(data.reac.products, rxns))
     rates = list(map(dict, map(data.reac.rate, rxns)))
     coll_dcts = list(map(data.reac.colliders, rxns))
     # Polars doesn't allow missing values for Struct-valued columns, so replace `None`
@@ -130,19 +131,15 @@ def reactions(
 
     # Build dataframe
     data_dct = {
-        ReactionOld.eq: eqs,
+        Reaction.reactants: reactants_lst,
+        Reaction.products: products_lst,
         ReactionRate.rate: rates,
         ReactionRate.colliders: coll_dcts,
     }
-    schema_dct = schema.types([ReactionOld, ReactionRate])
+    schema_dct = schema.types([Reaction, ReactionRate])
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
-    rxn_df = schema.reaction_table(rxn_df, models=(ReactionOld, ReactionRate))
-
-    # # Handle units
-    # if units is not None:
-    #     units0 = list(map(str.lower, reactions_units(inp)))
-    #     units = list(map(str.lower, units))
+    rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
 
     df_.to_csv(rxn_df, out)
 

@@ -885,9 +885,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     )
 
 
-def drop_parent_reactions(
-    par_mech: Mechanism, exp_sub_mech: Mechanism
-) -> Mechanism:
+def drop_parent_reactions(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechanism:
     """Drop equivalent reactions from a submechanism in a parent mechanism.
 
     :param par_mech: A parent mechanism
@@ -977,7 +975,7 @@ def update_parent_reaction_data(
     rem_par_mech = drop_parent_reactions(exp_par_mech, exp_sub_mech)
     rem_rxn_df = reactions(rem_par_mech)
     sub_rxn_df = reactions(exp_sub_mech)
-    par_rxn_df = polars.concat([rem_rxn_df, sub_rxn_df], how='diagonal')
+    par_rxn_df = polars.concat([rem_rxn_df, sub_rxn_df], how="diagonal")
     return set_reactions(rem_par_mech, par_rxn_df)
 
 

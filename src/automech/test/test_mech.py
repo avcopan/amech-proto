@@ -95,7 +95,6 @@ def test__expand_stereo(
     ],
 )
 def test__rename(mech0, name_mech, nspcs):
-
     name_dct, missing_names = automech.rename_dict(mech0, name_mech)
     print(name_dct)
     print(missing_names)
