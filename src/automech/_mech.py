@@ -5,16 +5,14 @@ import itertools
 import json
 import textwrap
 from collections.abc import Collection, Sequence
-from pathlib import Path
 
 import automol
 import more_itertools as mit
 import networkx
 import polars
-import pyvis
 
-# from IPython import display as ipd
 from . import data, reac_table, schema
+from . import net as net_
 from .schema import (
     Model,
     Reaction,
@@ -333,7 +331,9 @@ def species_names(
     spc_df = species(mech)
 
     if formulas is not None:
-        spc_df = df_.map_(spc_df, Species.amchi, "match", _formula_matcher(formulas))
+        spc_df = df_.map_(
+            spc_df, Species.amchi, "match", _formula_matcher(formulas), dtype_=bool
+        )
         spc_df = spc_df.filter(polars.col("match"))
 
     if exclude_formulas:
@@ -442,15 +442,14 @@ def network(
     excl_spc_names = species_names(mech, formulas=node_exclude_formulas)
 
     def _node_data_from_dicts(dcts: Sequence[dict]) -> dict:
-        names = [d.pop(Species.name) for d in dcts]
+        names = [d.get(Species.name) for d in dcts]
         return list(zip(names, dcts, strict=True))
 
     def _edge_data_from_dicts(dcts: Sequence[dict]) -> dict:
         edge_data = []
-        for dct0 in dcts:
-            dct = dct0.copy()
-            rcts = dct.pop(Reaction.reactants)
-            prds = dct.pop(Reaction.products)
+        for dct in dcts:
+            rcts = dct.get(Reaction.reactants)
+            prds = dct.get(Reaction.products)
             edge_keys = [
                 (r, p)
                 for r, p in itertools.product(rcts, prds)
@@ -553,7 +552,7 @@ def neighborhood(
     mech: Mechanism,
     spc_names: Sequence[str] = (),
     order: int = 1,
-    exclude_formulas: tuple[str, ...] = DEFAULT_EXCLUDE_FORMULAS,
+    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
 ) -> Mechanism:
     """Determine the n^th neighborhood of a subset of species.
 
@@ -1038,56 +1037,14 @@ def display(
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
     """
-    out_dir: Path = Path(out_dir)
-    out_dir.mkdir(exist_ok=True)
-    img_dir = Path("img")
-    (out_dir / img_dir).mkdir(exist_ok=True)
-
-    def _image_path(chi):
-        """Create an SVG molecule drawing and return the path."""
-        gra = automol.amchi.graph(chi, stereo=stereo)
-        chk = automol.amchi.amchi_key(chi)
-        svg_str = automol.graph.svg_string(gra, image_size=100)
-
-        path = img_dir / f"{chk}.svg"
-        with open(out_dir / path, mode="w") as file:
-            file.write(svg_str)
-
-        return str(path)
-
-    # Read in the mechanism data
-    spc_df: polars.DataFrame = species(mech)
-    rxn_df: polars.DataFrame = reactions(mech)
-
-    if rxn_df.is_empty():
-        print(f"The reaction network is empty. Skipping visualization...\n{mech}")
-        return
-
-    # Add PyVIS attributes to species table
-    spc_df = df_.map_(spc_df, Species.amchi, "image", _image_path)
-    spc_df = spc_df.with_columns(title=polars.col(Species.smiles))
-    spc_df = spc_df.with_columns(shape=polars.lit("image"))
-    mech = set_species(mech, spc_df)
-
-    # Add PyVIS attributes to reaction table
-    rp_cols = (Reaction.reactants, Reaction.products)
-    rxn_df = df_.map_(rxn_df, rp_cols, "title", data.reac.write_chemkin_equation)
-    mech = set_reactions(mech, rxn_df)
-
-    # Create NetworkX network
     mech_net = network(mech, node_exclude_formulas=node_exclude_formulas)
-
-    # Transfer data over to PyVIS
-    mech_vis = pyvis.network.Network(
-        directed=True, notebook=True, cdn_resources="in_line"
+    net_.display(
+        mech_net,
+        stereo=stereo,
+        out_name=out_name,
+        out_dir=out_dir,
+        open_browser=open_browser,
     )
-    for k, d in mech_net.nodes.data():
-        mech_vis.add_node(k, **d)
-    for k1, k2, d in mech_net.edges.data():
-        mech_vis.add_edge(k1, k2, **d)
-
-    # Generate the HTML file
-    mech_vis.write_html(str(out_dir / out_name), open_browser=open_browser)
 
 
 def display_species(

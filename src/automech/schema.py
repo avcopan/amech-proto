@@ -22,6 +22,7 @@ class Species(Model):
     amchi: str
     spin: int
     charge: int
+    formula: Struct
 
 
 class Reaction(Model):
@@ -29,6 +30,7 @@ class Reaction(Model):
 
     reactants: list[str]
     products: list[str]
+    # formula: Struct
 
 
 # Extended tables
@@ -140,6 +142,12 @@ def species_table(
 
     if Species.smiles not in df:
         df = df_.map_(df, Species.amchi, Species.smiles, automol.amchi.smiles)
+
+    if Species.formula not in df:
+        dt = dt_dct[Species.formula]
+        df = df_.map_(
+            df, Species.amchi, Species.formula, automol.amchi.formula, dtype_=dt
+        )
 
     if Species.name not in df:
         dt = dt_dct[Species.name]
