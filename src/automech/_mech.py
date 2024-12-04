@@ -153,13 +153,15 @@ def from_smiles(
     # Build the reactions dataframe
     trans_dct = df_.lookup_dict(spc_df, Species.smiles, Species.name)
     rxn_smis_lst = list(map(automol.smiles.reaction_reactants_and_products, rxn_smis))
-    eqs = [
-        data.reac.write_chemkin_equation(rs, ps, trans_dct=trans_dct)
+    data_lst = [
+        {
+            Reaction.reactants: list(map(trans_dct.get, rs)),
+            Reaction.products: list(map(trans_dct.get, ps)),
+        }
         for rs, ps in rxn_smis_lst
     ]
-    data_dct = {Reaction.eq: eqs}
-    dt = schema.types([Reaction], data_dct.keys())
-    rxn_df = polars.DataFrame(data=data_dct, schema=dt)
+    dt = schema.types([Reaction], [Reaction.reactants, Reaction.products])
+    rxn_df = polars.DataFrame(data=data_lst, schema=dt)
     return from_data(rxn_df, spc_df)
 
 
@@ -349,14 +351,46 @@ def species_names(
     return spc_names
 
 
+def reaction_reactants(mech: Mechanism) -> list[list[str]]:
+    """Get the reactants of reactions in the mechanism.
+
+    :param mech: A mechanism
+    :return: The reaction reactants
+    """
+    rxn_df = reactions(mech)
+    return rxn_df[Reaction.reactants].to_list()
+
+
+def reaction_products(mech: Mechanism) -> list[list[str]]:
+    """Get the products of reactions in the mechanism.
+
+    :param mech: A mechanism
+    :return: The reaction products
+    """
+    rxn_df = reactions(mech)
+    return rxn_df[Reaction.products].to_list()
+
+
+def reaction_reactants_and_products(
+    mech: Mechanism,
+) -> list[tuple[list[str], list[str]]]:
+    """Get the products of reactions in the mechanism.
+
+    :param mech: A mechanism
+    :return: The reaction products
+    """
+    rxn_df = reactions(mech)
+    return rxn_df[[Reaction.reactants, Reaction.products]].rows()
+
+
 def reaction_equations(mech: Mechanism) -> list[str]:
     """Get the equations of reactions in the mechanism.
 
     :param mech: A mechanism
     :return: The reaction equations
     """
-    rxn_df = reactions(mech)
-    return rxn_df[Reaction.eq].to_list()
+    rps = reaction_reactants_and_products(mech)
+    return list(itertools.starmap(data.reac.write_chemkin_equation, rps))
 
 
 def reaction_species_names(mech: Mechanism) -> list[str]:
@@ -402,28 +436,60 @@ def network(
     """Generate a network graph representation of the mechanism.
 
     :param mech: A mechanism
-    :param node_exclude_formulas: A list of formulas for species to be excluded as
-        nodes, defaults to ()
+    :param node_exclude_formulas: Formulas for species to be excluded as nodes
     :return: The mechanism network
     """
+    excl_spc_names = species_names(mech, formulas=node_exclude_formulas)
 
     def _node_data_from_dicts(dcts: Sequence[dict]) -> dict:
         names = [d.pop(Species.name) for d in dcts]
-        return dict(zip(names, dcts, strict=True))
+        return list(zip(names, dcts, strict=True))
 
-    excl_spc_names = species_names(mech, formulas=node_exclude_formulas)
+    def _edge_data_from_dicts(dcts: Sequence[dict]) -> dict:
+        edge_data = []
+        for dct0 in dcts:
+            dct = dct0.copy()
+            rcts = dct.pop(Reaction.reactants)
+            prds = dct.pop(Reaction.products)
+            edge_keys = [
+                (r, p)
+                for r, p in itertools.product(rcts, prds)
+                if r not in excl_spc_names and p not in excl_spc_names
+            ]
+            for edge_key in edge_keys:
+                edge_data.append((*edge_key, dct))
+        return edge_data
 
+    # Prepare node data
     spc_df = species(mech)
-    excl_spc_df = spc_df.filter(polars.col(Species.name).is_in(excl_spc_names))
-    incl_spc_df = spc_df.filter(~polars.col(Species.name).is_in(excl_spc_names))
+    spc_expr = polars.col(Species.name).is_in(excl_spc_names)
+    excl_spc_df = spc_df.filter(spc_expr)
+    incl_spc_df = spc_df.filter(~spc_expr)
 
     incl_spc_data = _node_data_from_dicts(incl_spc_df.to_dicts())
     excl_spc_data = _node_data_from_dicts(excl_spc_df.to_dicts())
 
-    mech_net = networkx.Graph(**excl_spc_data)
-    mech_net.add_nodes_from(incl_spc_data)
+    # Prepare edge data
+    rxn_df = reactions(mech)
+    rxn_df = rxn_df.with_row_index("id")
+    rxn_expr = (
+        polars.concat_list(Reaction.reactants, Reaction.products)
+        .list.eval(polars.element().is_in(excl_spc_names))
+        .list.all()
+    )
+    excl_rxn_df = rxn_df.filter(rxn_expr)
+    incl_rxn_df = rxn_df.filter(~rxn_expr)
 
-    print(networkx.adjacency_data(mech_net))
+    incl_rxn_data = _edge_data_from_dicts(incl_rxn_df.to_dicts())
+    excl_rxn_data = _edge_data_from_dicts(excl_rxn_df.to_dicts())
+
+    mech_net = networkx.Graph(
+        excluded_species=excl_spc_data, excluded_reactions=excl_rxn_data
+    )
+
+    mech_net.add_nodes_from(incl_spc_data)
+    mech_net.add_edges_from(incl_rxn_data)
+    return mech_net
 
 
 # transformations
@@ -441,27 +507,20 @@ def rename(
     if drop_missing:
         mech = with_species(mech, list(name_dct), strict=drop_missing)
 
-    def _new_name(orig_name: str) -> str:
-        """Rename a species.
-
-        :param orig_name: The original name
-        :return: The new name
-        """
-        return name_dct.get(orig_name) if orig_name in name_dct else orig_name
-
-    def _new_eq(orig_eq: str) -> str:
-        rname0s, pname0s, coll, arrow = data.reac.read_chemkin_equation(orig_eq)
-        rnames = list(map(_new_name, rname0s))
-        pnames = list(map(_new_name, pname0s))
-        return data.reac.write_chemkin_equation(rnames, pnames, coll, arrow)
-
     spc_df = species(mech)
-    spc_df = spc_df.rename({Species.name: SpeciesRenamed.orig_name})
-    spc_df = df_.map_(spc_df, SpeciesRenamed.orig_name, Species.name, _new_name)
+    spc_df = spc_df.with_columns(polars.col(Species.name).replace(name_dct))
 
     rxn_df = reactions(mech)
-    rxn_df = rxn_df.rename({Reaction.eq: ReactionRenamed.orig_eq})
-    rxn_df = df_.map_(rxn_df, ReactionRenamed.orig_eq, Reaction.eq, _new_eq)
+    rxn_df = rxn_df.with_columns(
+        polars.col(Reaction.reactants).alias(ReactionRenamed.orig_reactants),
+        polars.col(Reaction.products).alias(ReactionRenamed.orig_products),
+    )
+
+    repl_expr = polars.element().replace(name_dct)
+    rxn_df = rxn_df.with_columns(
+        polars.col(Reaction.reactants).list.eval(repl_expr),
+        polars.col(Reaction.products).list.eval(repl_expr),
+    )
     return from_data(
         rxn_inp=rxn_df,
         spc_inp=spc_df,
@@ -557,25 +616,22 @@ def _with_or_without_species(
     :param strict: Strictly include these species and no others?
     :return: The submechanism
     """
-    # Read in the mechanism data
-    spc_df: polars.DataFrame = species(mech)
-    rxn_df: polars.DataFrame = reactions(mech)
+    # Build the appropriate filtering expression
+    expr = (
+        polars.concat_list(Reaction.reactants, Reaction.products)
+        .list.eval(polars.element().is_in(spc_names))
+        .list
+    )
+    expr = expr.all() if strict else expr.any()
+    expr = expr.not_() if without else expr
 
-    spc_names = set(spc_names)
+    rxn_df = reactions(mech)
 
-    def _include(eq: str) -> bool:
-        rct_names, prd_names, *_ = data.reac.read_chemkin_equation(eq)
-        rgt_names = set(rct_names + prd_names)
-        is_incl = rgt_names <= spc_names if strict else bool(rgt_names & spc_names)
-        return without ^ is_incl
-
-    rxn_df = df_.map_(rxn_df, Reaction.eq, "incl", _include)
-    rxn_df = rxn_df.filter("incl").drop("incl")
-
+    rxn_df = rxn_df.filter(expr)
     return without_unused_species(
         from_data(
             rxn_inp=rxn_df,
-            spc_inp=spc_df,
+            spc_inp=species(mech),
             thermo_temps=thermo_temperatures(mech),
             rate_units=rate_units(mech),
         )
@@ -598,7 +654,6 @@ def expand_stereo(
     mech: Mechanism,
     enant: bool = True,
     strained: bool = False,
-    drop_unused: bool = False,
 ) -> tuple[Mechanism, Mechanism]:
     """Expand stereochemistry for a mechanism.
 
@@ -615,27 +670,42 @@ def expand_stereo(
     # Do the species expansion
     spc_df = _expand_species_stereo(spc_df0, enant=enant, strained=strained)
 
-    # Do the reaction expansion
-    chi_dct: dict = df_.lookup_dict(
-        spc_df, SpeciesStereo.orig_name, SpeciesStereo.orig_amchi
+    if not reaction_count(mech):
+        mech = set_species(mech, spc_df)
+        return mech, mech
+
+    # Add reactant and product AMChIs
+    rxn_df = reac_table.translate_reagents(
+        rxn_df,
+        trans=spc_df0[Species.name],
+        trans_into=spc_df0[Species.amchi],
+        rcol_out="ramchis",
+        pcol_out="pamchis",
     )
+
+    # Add "orig" prefix to current reactant and product columns
+    col_dct = {
+        Reaction.reactants: ReactionStereo.orig_reactants,
+        Reaction.products: ReactionStereo.orig_products,
+    }
+    rxn_df = rxn_df.rename(col_dct)
+
+    # Define the expansion function
     name_dct: dict = df_.lookup_dict(
         spc_df, (SpeciesStereo.orig_name, Species.amchi), Species.name
     )
 
-    def _expand_reaction(orig_eq):
+    def _expand_reaction(rchi0s, pchi0s, rname0s, pname0s):
         """Classify a reaction and return the reaction objects."""
-        rname0s, pname0s, coll, arrow = data.reac.read_chemkin_equation(orig_eq)
-        rchi0s = list(map(chi_dct.get, rname0s))
-        pchi0s = list(map(chi_dct.get, pname0s))
         objs = automol.reac.from_amchis(rchi0s, pchi0s, stereo=False)
-        eqs = []
-        chis = []
+        rnames_lst = []
+        pnames_lst = []
+        ts_amchis = []
         for obj in objs:
             sobjs = automol.reac.expand_stereo(obj, enant=enant, strained=strained)
             for sobj in sobjs:
                 # Determine the AMChI
-                chi = automol.reac.ts_amchi(sobj)
+                ts_amchi = automol.reac.ts_amchi(sobj)
                 # Determine the updated equation
                 rchis, pchis = automol.reac.amchis(sobj)
                 rnames = tuple(map(name_dct.get, zip(rname0s, rchis, strict=True)))
@@ -643,29 +713,32 @@ def expand_stereo(
                 if not all(isinstance(n, str) for n in rnames + pnames):
                     return ([], [])
 
-                eq = data.reac.write_chemkin_equation(rnames, pnames, coll, arrow)
-                eqs.append(eq)
-                chis.append(chi)
-        return eqs, chis
+                rnames_lst.append(rnames)
+                pnames_lst.append(pnames)
+                ts_amchis.append(ts_amchi)
+        return rnames_lst, pnames_lst, ts_amchis
 
-    rxn_df = rxn_df.rename({Reaction.eq: ReactionStereo.orig_eq})
-    rxn_df = df_.map_(
-        rxn_df,
-        ReactionStereo.orig_eq,
-        (Reaction.eq, ReactionStereo.amchi),
-        _expand_reaction,
+    # Do the expansion
+    cols_in = (
+        "ramchis",
+        "pamchis",
+        ReactionStereo.orig_reactants,
+        ReactionStereo.orig_products,
     )
+    cols_out = (Reaction.reactants, Reaction.products, ReactionStereo.amchi)
+    rxn_df = df_.map_(rxn_df, cols_in, cols_out, _expand_reaction)
 
     # Separate out the error cases
-    err_df = rxn_df.filter(polars.col(Reaction.eq).list.len() == 0)
-    rxn_df = rxn_df.filter(polars.col(Reaction.eq).list.len() != 0)
+    err_df = rxn_df.filter(polars.col(Reaction.reactants).list.len() == 0)
+    rxn_df = rxn_df.filter(polars.col(Reaction.reactants).list.len() != 0)
 
     # Expand the table by stereoisomers
-    err_df = err_df.drop(Reaction.eq, ReactionStereo.amchi).rename(
-        {ReactionStereo.orig_eq: Reaction.eq}
+    err_df = err_df.drop(ReactionStereo.amchi, *col_dct.keys()).rename(
+        dict(map(reversed, col_dct.items()))
     )
-    rxn_df = rxn_df.explode(Reaction.eq, ReactionStereo.amchi)
+    rxn_df = rxn_df.explode(Reaction.reactants, Reaction.products, ReactionStereo.amchi)
 
+    # Form the new mechanisms
     mech = from_data(
         rxn_df,
         spc_df,
@@ -678,10 +751,6 @@ def expand_stereo(
         thermo_temps=thermo_temperatures(mech),
         rate_units=rate_units(mech),
     )
-
-    if drop_unused:
-        mech = without_unused_species(mech)
-        err_mech = without_unused_species(err_mech)
 
     return mech, err_mech
 
@@ -726,7 +795,7 @@ def _expand_species_stereo(
     return spc_df
 
 
-def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
+def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechanism:
     """Apply the stereoexpansion of a submechanism to a parent mechanism.
 
     Produces an equivalent of the parent mechanism, containing the distinct
@@ -735,7 +804,7 @@ def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     stereo-expanded submechanism into a parent mechanism.
 
     :param par_mech: A parent mechanism
-    :param sub_mech: A stereo-expanded sub-mechanism
+    :param exp_sub_mech: A stereo-expanded sub-mechanism
     :return: An equivalent parent mechanism, with distinct stereoisomers from the
         sub-mechanism
     """
@@ -750,7 +819,7 @@ def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     par_spc_df = par_spc_df.rename(col_dct)
 
     #   b. Group by original names and isolate expanded stereoisomers
-    sub_spc_df = species(sub_mech)
+    sub_spc_df = species(exp_sub_mech)
     sub_spc_df = schema.species_table(sub_spc_df, models=(SpeciesStereo,))
     sub_spc_df = sub_spc_df.select(*col_dct.keys(), *col_dct.values())
     sub_spc_df = sub_spc_df.group_by(SpeciesRenamed.orig_name).agg(polars.all())
@@ -772,27 +841,41 @@ def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     # 2. Reaction table
     #   a. Identify the subset of reactions to be expanded
     par_rxn_df = reactions(par_mech)
+    has_rate = ReactionRate.rate in par_rxn_df
+    if not has_rate:
+        rate = dict(data.rate.SimpleRate())
+        par_rxn_df = par_rxn_df.with_columns(polars.lit(rate).alias(ReactionRate.rate))
+
     par_rxn_df = par_rxn_df.with_columns(
-        polars.col(Reaction.eq).alias(ReactionStereo.orig_eq),
+        polars.col(Reaction.reactants).alias(ReactionStereo.orig_reactants),
+        polars.col(Reaction.products).alias(ReactionStereo.orig_products),
         polars.col(ReactionRate.rate).alias(ReactionMisc.orig_rate),
     )
-    needs_exp = polars.col(Reaction.eq).str.contains_any(list(exp_dct.keys()))
+    needs_exp = (
+        polars.concat_list(Reaction.reactants, Reaction.products)
+        .list.eval(polars.element().is_in(list(exp_dct.keys())))
+        .list.any()
+    )
     exp_rxn_df = par_rxn_df.filter(needs_exp)
     rem_rxn_df = par_rxn_df.filter(~needs_exp)
 
     #   b. Expand the reactions
-    def _expand(eq0, rate0):
-        rxn0 = data.reac.from_equation(eq=eq0, rate_=rate0)
+    def _expand(rct0s, prd0s, rate0):
+        rxn0 = data.reac.from_data(rct0s, prd0s, rate_=rate0)
         rxns = data.reac.expand_lumped_species(rxn0, exp_dct=exp_dct)
-        eqs = list(map(data.reac.equation, rxns))
+        rcts_lst = list(map(data.reac.reactants, rxns))
+        prds_lst = list(map(data.reac.products, rxns))
         rates = list(map(dict, map(data.reac.rate, rxns)))
-        return eqs, rates
+        return rcts_lst, prds_lst, rates
 
-    cols = [Reaction.eq, ReactionRate.rate]
+    cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
     dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
     exp_rxn_df = df_.map_(exp_rxn_df, cols, cols, _expand, dtype_=dtypes)
     exp_rxn_df: polars.DataFrame = exp_rxn_df.explode(cols)
     exp_rxn_df = polars.concat([rem_rxn_df, exp_rxn_df])
+
+    if not has_rate:
+        exp_rxn_df = exp_rxn_df.drop(ReactionRate.rate, ReactionMisc.orig_rate)
 
     return from_data(
         rxn_inp=exp_rxn_df,
@@ -802,19 +885,19 @@ def expand_parent_stereo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
     )
 
 
-def drop_parent_reactions(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
+def drop_parent_reactions(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechanism:
     """Drop equivalent reactions from a submechanism in a parent mechanism.
 
     :param par_mech: A parent mechanism
-    :param sub_mech: A stereo-expanded sub-mechanism
+    :param exp_sub_mech: A stereo-expanded sub-mechanism
     :return: The parent mechanism, with updated rates
     """
     par_rxn_df = reactions(par_mech)
-    sub_rxn_df = reactions(without_unused_species(sub_mech))
+    sub_rxn_df = reactions(without_unused_species(exp_sub_mech))
 
     # Form species mappings onto AMChIs without stereo
     par_spc_df = species(par_mech)
-    sub_spc_df = species(sub_mech)
+    sub_spc_df = species(exp_sub_mech)
     par_spc_df: polars.DataFrame = df_.map_(
         par_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo
     )
@@ -834,7 +917,7 @@ def drop_parent_reactions(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism
         sub_rxn_df, "key", spc_key_dct=sub_key_dct
     )
 
-    # Remove overlapping reactions from parent mechanism and add them from submechanism
+    # Remove overlapping reactions from parent mechanism
     is_in_sub = polars.col("key").is_in(sub_rxn_df["key"])
     par_rxn_df = par_rxn_df.filter(~is_in_sub)
     par_rxn_df = par_rxn_df.drop("key")
@@ -843,15 +926,22 @@ def drop_parent_reactions(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism
     return par_mech
 
 
-def update_parent_thermo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
-    """Update the thermochemistry in a parent mechanism from a submechanism.
+def update_parent_species_data(
+    par_mech: Mechanism, exp_sub_mech: Mechanism
+) -> Mechanism:
+    """Update the species data in a parent mechanism from a submechanism.
+
+    Note: A pseudo-stereoexpansion will be applied to any to the parent mechanism for
+    any species it shares with the sub-mechanism.
 
     :param par_mech: A parent mechanism
-    :param sub_mech: A stereo-expanded sub-mechanism
+    :param exp_sub_mech: A stereo-expanded sub-mechanism
     :return: The parent mechanism, with updated thermochemistry
     """
-    par_spc_df = species(par_mech)
-    sub_spc_df = species(sub_mech)
+    exp_par_mech = expand_parent_stereo(par_mech, exp_sub_mech)
+
+    par_spc_df = species(exp_par_mech)
+    sub_spc_df = species(exp_sub_mech)
 
     key = SpeciesThermo.thermo_string
     sub_therm_df = sub_spc_df.filter(polars.col(key).is_not_null())
@@ -866,7 +956,27 @@ def update_parent_thermo(par_mech: Mechanism, sub_mech: Mechanism) -> Mechanism:
         .alias(key)
     )
     par_spc_df = par_spc_df.drop(polars.selectors.ends_with("_right"))
-    return set_species(par_mech, par_spc_df)
+    return set_species(exp_par_mech, par_spc_df)
+
+
+def update_parent_reaction_data(
+    par_mech: Mechanism, exp_sub_mech: Mechanism
+) -> Mechanism:
+    """Update the reaction data in a parent mechanism from a submechanism.
+
+    Note: A pseudo-stereoexpansion will be applied to any to the parent mechanism for
+    any species it shares with the sub-mechanism.
+
+    :param par_mech: A parent mechanism
+    :param exp_sub_mech: A stereo-expanded sub-mechanism
+    :return: The parent mechanism, with updated thermochemistry
+    """
+    exp_par_mech = expand_parent_stereo(par_mech, exp_sub_mech)
+    rem_par_mech = drop_parent_reactions(exp_par_mech, exp_sub_mech)
+    rem_rxn_df = reactions(rem_par_mech)
+    sub_rxn_df = reactions(exp_sub_mech)
+    par_rxn_df = polars.concat([rem_rxn_df, sub_rxn_df], how="diagonal")
+    return set_reactions(rem_par_mech, par_rxn_df)
 
 
 # comparison
@@ -914,7 +1024,7 @@ def from_string(mech_str: str) -> Mechanism:
 def display(
     mech: Mechanism,
     stereo: bool = True,
-    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
+    node_exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
@@ -923,8 +1033,7 @@ def display(
 
     :param mech: The mechanism
     :param stereo: Include stereochemistry in species drawings?, defaults to True
-    :param exclude: Formula strings of molecules to exclude from the  network nodes,
-        using * for wildcard stoichiometry, defaults to ("H*", "OH*", "O2H*", "CH*")
+    :param node_exclude_formulas: Formulas for species to be excluded as nodes
     :param out_name: The name of the HTML file for the network visualization
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
@@ -933,18 +1042,6 @@ def display(
     out_dir.mkdir(exist_ok=True)
     img_dir = Path("img")
     (out_dir / img_dir).mkdir(exist_ok=True)
-    net = pyvis.network.Network(directed=True, notebook=True, cdn_resources="in_line")
-
-    # Read in the mechanism data
-    spc_df: polars.DataFrame = species(mech)
-    rxn_df: polars.DataFrame = reactions(mech)
-
-    if rxn_df.is_empty():
-        print(f"The reaction network is empty. Skipping visualization...\n{mech}")
-        return
-
-    # Determine the names of the species to be excluded
-    excl_names = species_names(mech, formulas=exclude_formulas)
 
     def _image_path(chi):
         """Create an SVG molecule drawing and return the path."""
@@ -958,28 +1055,39 @@ def display(
 
         return str(path)
 
-    def _add_node(name, smi, path):
-        """Add a node to the network."""
-        if name not in excl_names:
-            net.add_node(name, shape="image", image=path, title=smi)
+    # Read in the mechanism data
+    spc_df: polars.DataFrame = species(mech)
+    rxn_df: polars.DataFrame = reactions(mech)
 
-    def _add_edge(eq):
-        """Add an edge to the network."""
-        rnames, pnames, *_ = data.reac.read_chemkin_equation(eq)
-        for rname, pname in itertools.product(rnames, pnames):
-            if rname not in excl_names and pname not in excl_names:
-                net.add_edge(rname, pname, title=eq)
+    if rxn_df.is_empty():
+        print(f"The reaction network is empty. Skipping visualization...\n{mech}")
+        return
 
-    # Generate SVG drawings with paths
-    spc_df = df_.map_(spc_df, Species.amchi, "image_path", _image_path)
-    # Add nodes to the network
-    spc_df = df_.map_(
-        spc_df, (Species.name, Species.smiles, "image_path"), None, _add_node
+    # Add PyVIS attributes to species table
+    spc_df = df_.map_(spc_df, Species.amchi, "image", _image_path)
+    spc_df = spc_df.with_columns(title=polars.col(Species.smiles))
+    spc_df = spc_df.with_columns(shape=polars.lit("image"))
+    mech = set_species(mech, spc_df)
+
+    # Add PyVIS attributes to reaction table
+    rp_cols = (Reaction.reactants, Reaction.products)
+    rxn_df = df_.map_(rxn_df, rp_cols, "title", data.reac.write_chemkin_equation)
+    mech = set_reactions(mech, rxn_df)
+
+    # Create NetworkX network
+    mech_net = network(mech, node_exclude_formulas=node_exclude_formulas)
+
+    # Transfer data over to PyVIS
+    mech_vis = pyvis.network.Network(
+        directed=True, notebook=True, cdn_resources="in_line"
     )
-    # Add edges to the network
-    rxn_df = df_.map_(rxn_df, Reaction.eq, None, _add_edge)
-    # Visualize the network
-    net.write_html(str(out_dir / out_name), open_browser=open_browser)
+    for k, d in mech_net.nodes.data():
+        mech_vis.add_node(k, **d)
+    for k1, k2, d in mech_net.edges.data():
+        mech_vis.add_edge(k1, k2, **d)
+
+    # Generate the HTML file
+    mech_vis.write_html(str(out_dir / out_name), open_browser=open_browser)
 
 
 def display_species(
@@ -1026,8 +1134,8 @@ def display_reactions(
     mech: Mechanism,
     eqs: Collection | None = None,
     stereo: bool = True,
-    keys: tuple[str, ...] = (Reaction.eq,),
-    spc_keys: tuple[str, ...] = (Species.smiles,),
+    keys: Sequence[str] = (),
+    spc_keys: Sequence[str] = (Species.smiles,),
 ):
     """Display the reactions in a mechanism.
 
@@ -1045,9 +1153,16 @@ def display_reactions(
     chi_dct = df_.lookup_dict(spc_df, Species.name, Species.amchi)
     trans_dcts = {k: df_.lookup_dict(spc_df, Species.name, k) for k in spc_keys}
 
+    rxn_df = df_.map_(
+        rxn_df,
+        (Reaction.reactants, Reaction.products),
+        "eq",
+        data.reac.write_chemkin_equation,
+    )
+
     if eqs is not None:
         eqs = list(map(data.reac.standardize_chemkin_equation, eqs))
-        rxn_df = rxn_df.filter(polars.col(Reaction.eq).is_in(eqs))
+        rxn_df = rxn_df.filter(polars.col("eq").is_in(eqs))
 
     def _display_reaction(eq, *vals):
         """Add a node to the network."""
@@ -1070,4 +1185,4 @@ def display_reactions(
             automol.amchi.display_reaction(rchis, pchis, stereo=stereo)
 
     # Display the requested reactions
-    rxn_df = df_.map_(rxn_df, (Reaction.eq, *keys), None, _display_reaction)
+    rxn_df = df_.map_(rxn_df, ("eq", *keys), None, _display_reaction)

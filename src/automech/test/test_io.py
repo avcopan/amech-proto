@@ -8,7 +8,7 @@ import pytest
 import automech
 
 DATA_PATH = Path(__file__).parent / "data"
-TEMP_PATH = tempfile.gettempdir()
+TEMP_PATH = Path(tempfile.gettempdir())
 
 
 def check_counts(mech, ref_nrxns, ref_nspcs):
@@ -35,13 +35,13 @@ def check_counts(mech, ref_nrxns, ref_nspcs):
 def test__chemkin(mech_file_name, nrxns, nspcs, roundtrip):
     """Test automech.io.chemkin."""
     # Read
-    mech_path = Path(DATA_PATH) / mech_file_name
+    mech_path = DATA_PATH / mech_file_name
     mech0 = automech.io.chemkin.read.mechanism(mech_path)
     print(mech0)
     check_counts(mech0, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
     # Write
-    out = Path(TEMP_PATH) / mech_file_name
+    out = TEMP_PATH / mech_file_name
     mech_str = automech.io.chemkin.write.mechanism(mech0, out=out)
     print(mech_str)
     #   - Check the direct output
@@ -70,15 +70,15 @@ def test__chemkin(mech_file_name, nrxns, nspcs, roundtrip):
 def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
     """Test automech.io.mechanalyzer."""
     # Read
-    rxn_path = Path(DATA_PATH) / rxn_file_name
-    spc_path = Path(DATA_PATH) / spc_file_name
+    rxn_path = DATA_PATH / rxn_file_name
+    spc_path = DATA_PATH / spc_file_name
     mech = automech.io.mechanalyzer.read.mechanism(rxn_path, spc_path)
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)
 
     # Write
-    rxn_out = Path(TEMP_PATH) / rxn_file_name
-    spc_out = Path(TEMP_PATH) / spc_file_name
+    rxn_out = TEMP_PATH / rxn_file_name
+    spc_out = TEMP_PATH / spc_file_name
     mech_str, csv_str = automech.io.mechanalyzer.write.mechanism(
         mech, rxn_out=rxn_out, spc_out=spc_out, string=True
     )
@@ -101,8 +101,8 @@ def test__mechanalyzer(rxn_file_name, spc_file_name, nrxns, nspcs):
 def test__rmg(rxn_file_name, spc_file_name, nrxns, nspcs):
     """Test automech.io.rmg."""
     # Read
-    rxn_path = Path(DATA_PATH) / rxn_file_name
-    spc_path = Path(DATA_PATH) / spc_file_name
+    rxn_path = DATA_PATH / rxn_file_name
+    spc_path = DATA_PATH / spc_file_name
     mech = automech.io.rmg.read.mechanism(rxn_path, spc_path)
     print(mech)
     check_counts(mech, ref_nrxns=nrxns, ref_nspcs=nspcs)

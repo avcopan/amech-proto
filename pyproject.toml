@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Add a short description here"
 authors = [{name = "Andreas Copan", email = "avcopan@gmail.com"}]
 requires-python = ">= 3.10"
-dependencies = ["pyvis", "pytest-xdist[psutil]>=3.6.1,<4"]
+dependencies = ["pyvis", "pytest-xdist[psutil]>=3.6.1,<4", "pip"]
 
 [build-system]
 requires = ["setuptools"]

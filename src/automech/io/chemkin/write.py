@@ -99,20 +99,16 @@ def reactions_block(mech: Mechanism) -> str:
     :param mech: A mechanism
     :return: The reactions block string
     """
-
-    def _reaction_object(eq, rate_, coll_dct):
-        return reac.from_equation(eq=eq, rate_=rate_, coll_dct=coll_dct)
-
     # Generate reaction objects
     # (Eventually, we should have a function like _mech.with_reaction_objects(mech))
     rxn_df = _mech.reactions(mech)
-    rxn_df = df_.map_(
-        rxn_df,
-        [Reaction.eq, ReactionRate.rate, ReactionRate.colliders],
-        "obj",
-        _reaction_object,
-        dtype_=object,
-    )
+    cols = [
+        Reaction.reactants,
+        Reaction.products,
+        ReactionRate.rate,
+        ReactionRate.colliders,
+    ]
+    rxn_df = df_.map_(rxn_df, cols, "obj", reac.from_data, dtype_=object)
 
     # Determine the max equation width for formatting
     rxn_df = df_.map_(rxn_df, "obj", "ck_eq", reac.chemkin_equation)
