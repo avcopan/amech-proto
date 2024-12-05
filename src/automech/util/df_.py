@@ -1,5 +1,7 @@
 """DataFrame utilities."""
 
+import random
+import string
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
@@ -12,6 +14,14 @@ Key_ = Key | Keys
 Value = object
 Values = Sequence[object]
 Value_ = Value | Values
+
+
+def temp_column(length: int = 24) -> str:
+    """Generate a unique temporary column name for a dataframe.
+
+    :return: The column name
+    """
+    return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
 
 def from_csv(path: str) -> polars.DataFrame:

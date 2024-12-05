@@ -9,7 +9,7 @@ import polars
 
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import species_table
+from ...schema import Errors, species_table
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -19,7 +19,7 @@ def mechanism(
     spc_inp: pandas.DataFrame | str | Path,
     rxn_out: str | None = None,
     spc_out: str | None = None,
-) -> Mechanism:
+) -> tuple[Mechanism, Errors]:
     """Extract the mechanism from MechAnalyzer files.
 
     :param rxn_inp: A mechanism (CHEMKIN format), as a file path or string
@@ -28,9 +28,10 @@ def mechanism(
     :param spc_out: Optionally, write the output to this file path (species)
     :return: The mechanism dataclass
     """
-    rxn_df = chemkin_read.reactions(rxn_inp, out=rxn_out)
     spc_df = species(spc_inp, out=spc_out)
-    return mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    rxn_df, err = chemkin_read.reactions(rxn_inp, out=rxn_out, spc_df=spc_df)
+    mech = mechanism_from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    return mech, err
 
 
 def species(

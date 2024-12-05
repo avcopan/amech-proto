@@ -55,6 +55,9 @@ class Mechanism:
         if not isinstance(self.species, polars.DataFrame):
             self.species = polars.DataFrame(self.species)
 
+        self.species = schema.species_table(self.species)
+        self.reactions, _ = schema.reaction_table(self.reactions, spc_df=self.species)
+
     def __repr__(self):
         rxn_df_rep = textwrap.indent(repr(self.reactions), "  ")
         spc_df_rep = textwrap.indent(repr(self.species), "  ")
@@ -94,16 +97,17 @@ def from_data(
     :param drop_spc: Drop unused species from the mechanism?
     :return: The mechanism object
     """
-    rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
-    rxn_df = schema.reaction_table(rxn_df, models=rxn_models)
+    rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
     spc_df = schema.species_table(spc_df, models=spc_models)
-    return Mechanism(
+    rxn_df, _ = schema.reaction_table(rxn_df, models=rxn_models, spc_df=spc_df)
+    mech = Mechanism(
         reactions=rxn_df,
         species=spc_df,
         thermo_temps=thermo_temps,
         rate_units=rate_units,
     )
+    return mech
 
 
 def from_smiles(
@@ -974,7 +978,7 @@ def update_parent_reaction_data(
     rem_par_mech = drop_parent_reactions(exp_par_mech, exp_sub_mech)
     rem_rxn_df = reactions(rem_par_mech)
     sub_rxn_df = reactions(exp_sub_mech)
-    par_rxn_df = polars.concat([rem_rxn_df, sub_rxn_df], how="diagonal")
+    par_rxn_df = polars.concat([rem_rxn_df, sub_rxn_df], how="diagonal_relaxed")
     return set_reactions(rem_par_mech, par_rxn_df)
 
 

@@ -14,7 +14,7 @@ from pyparsing import common as ppc
 from ... import data, schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
+from ...schema import Errors, Reaction, ReactionRate, Species, SpeciesThermo
 from ...util import df_
 
 
@@ -61,7 +61,7 @@ A_UNIT = pp.Opt(
 # mechanism
 def mechanism(
     inp: str, out: str | Path | None = None, spc_out: str | None = None
-) -> Mechanism:
+) -> tuple[Mechanism, Errors]:
     """Extract the mechanism from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -69,29 +69,32 @@ def mechanism(
     :param spc_out: Optionally, write the output to this file path (species)
     :return: The mechanism dataclass
     """
-    rxn_df = reactions(inp, out=out)
     spc_df = species(inp, out=spc_out)
+    rxn_df, err = reactions(inp, out=out, spc_df=spc_df)
     rate_units = reactions_units(inp)
     thermo_temps = thermo_temperatures(inp)
-    return mechanism_from_data(
+    mech = mechanism_from_data(
         rxn_inp=rxn_df, spc_inp=spc_df, rate_units=rate_units, thermo_temps=thermo_temps
     )
+    return mech, err
 
 
 # reactions
 def reactions(
     inp: str,
     units: tuple[str, str] | None = None,
+    spc_df: polars.DataFrame | None = None,
     spc_names: Collection[str] | None = None,
     out: str | None = None,
-) -> polars.DataFrame:
+) -> tuple[polars.DataFrame, Errors]:
     """Extract reaction information as a dataframe from a CHEMKIN file.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :param units: Convert the rates to these units, if needed
+    :param spc_df: A species dataframe to be used for validation
     :param spc_names: Only include reactions involving these species
     :param out: Optionally, write the output to this file path
-    :return: The reactions dataframe
+    :return: The reactions dataframe, along with any errors that were encountered
     """
 
     def _is_reaction_line(string: str) -> bool:
@@ -139,11 +142,13 @@ def reactions(
     schema_dct = schema.types([Reaction, ReactionRate])
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
-    rxn_df = schema.reaction_table(rxn_df, models=(Reaction, ReactionRate))
+    rxn_df, err = schema.reaction_table(
+        rxn_df, spc_df=spc_df, models=(Reaction, ReactionRate), fail_on_error=False
+    )
 
     df_.to_csv(rxn_df, out)
 
-    return rxn_df
+    return rxn_df, err
 
 
 def reactions_block(inp: str, comments: bool = True) -> str:
@@ -201,6 +206,8 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
 
     therm_df = thermo(inp, spc_df=spc_df)
     spc_df = spc_df if therm_df is None else therm_df
+
+    spc_df = schema.species_table(spc_df)
 
     df_.to_csv(spc_df, out)
 

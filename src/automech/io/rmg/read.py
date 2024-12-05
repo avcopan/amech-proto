@@ -13,7 +13,7 @@ from tqdm.auto import tqdm
 from ... import schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import Species
+from ...schema import Errors, Species
 from ...util import df_
 from ..chemkin import read as chemkin_read
 
@@ -27,7 +27,7 @@ SPECIES_DICT = pp.OneOrMore(pp.Group(SPECIES_ENTRY))("dict")
 
 def mechanism(
     rxn_inp: str, spc_inp: str, out: str | None = None, spc_out: str | None = None
-) -> Mechanism:
+) -> tuple[Mechanism, Errors]:
     """Extract the mechanism from RMG files.
 
     :param inp: An RMG mechanism (CHEMKIN format), as a file path or string
@@ -36,14 +36,15 @@ def mechanism(
     :param spc_out: Optionally, write the output to this file path (species)
     :return: The mechanism dataclass
     """
-    rxn_df = chemkin_read.reactions(rxn_inp, out=out)
     spc_df = species(spc_inp)
     spc_df = chemkin_read.thermo(rxn_inp, spc_df=spc_df, out=spc_out)
+    rxn_df, err = chemkin_read.reactions(rxn_inp, out=out, spc_df=spc_df)
     rate_units = chemkin_read.reactions_units(rxn_inp)
     thermo_temps = chemkin_read.thermo_temperatures(rxn_inp)
-    return mechanism_from_data(
+    mech = mechanism_from_data(
         rxn_inp=rxn_df, spc_inp=spc_df, rate_units=rate_units, thermo_temps=thermo_temps
     )
+    return mech, err
 
 
 def species(inp: str, out: str | None = None) -> polars.DataFrame:
