@@ -1,5 +1,7 @@
 """Network mechanism representation."""
 
+import itertools
+from collections.abc import Sequence
 from pathlib import Path
 
 import automol
@@ -9,14 +11,65 @@ import pyvis
 from . import data
 from .schema import Reaction, Species
 
+COLOR_SEQUENCE = [
+    "#636EFA",
+    "#EF553B",
+    "#00CC96",
+    "#AB63FA",
+    "#FFA15A",
+    "#19D3F3",
+    "#FF6692",
+    "#B6E880",
+    "#FF97FF",
+    "#FECB52",
+]
+
 
 # transformation
-def pes_components(net: networkx.Graph) -> networkx.Graph:
+def connected_components(net: networkx.Graph) -> list[networkx.Graph]:
+    """Determine the connected components of a network.
+
+    :param net: A reaction network
+    :return: The connected components
+    """
+    return [net.subgraph(ks).copy() for ks in networkx.connected_components(net)]
+
+
+def pes_components(
+    net: networkx.Graph, formula: dict | str | None = None
+) -> list[networkx.Graph]:
     """Determine the PES components in a network.
 
     :param net: A reaction network
     :return: The PES component networks
     """
+    pes_nets = pes_networks(net) if formula is None else [pes_network(net, formula)]
+    return list(itertools.chain(*map(connected_components, pes_nets)))
+
+
+def pes_networks(net: networkx.Graph) -> list[networkx.Graph]:
+    """Determine the PES networks in a larger reaction network.
+
+    :param net: A reaction network
+    :return: The PES component networks
+    """
+    fmls = automol.form.unique([d[Reaction.formula] for *_, d in net.edges.data()])
+    return [pes_network(net, f) for f in fmls]
+
+
+def pes_network(net: networkx.Graph, formula: dict | str) -> networkx.Graph:
+    """Select the network associated with a specific PES.
+
+    :param net: A reaction network
+    :param formula: The formula to select
+    :return: The PES network
+    """
+    edge_keys = [
+        (k1, k2)
+        for k1, k2, d in net.edges.data()
+        if automol.form.equal(d[Reaction.formula], formula)
+    ]
+    return net.edge_subgraph(edge_keys)
 
 
 # serialization
@@ -31,7 +84,7 @@ def string(net: networkx.Graph) -> str:
 
 # display
 def display(
-    net: networkx.Graph,
+    net_: networkx.Graph | Sequence[networkx.Graph],
     stereo: bool = True,
     out_name: str = "net.html",
     out_dir: str = ".automech",
@@ -39,13 +92,22 @@ def display(
 ) -> None:
     """Display the mechanism as a reaction network.
 
-    :param net: A reaction network
+    :param net: A reaction network or sequence or networks
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param node_exclude_formulas: Formulas for species to be excluded as nodes
     :param out_name: The name of the HTML file for the network visualization
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
     """
+    nets = [net_] if isinstance(net_, networkx.Graph) else net_
+    nets = [n.copy() for n in nets]
+
+    # Set different edge colors to distinguish components
+    color_cycle = itertools.cycle(COLOR_SEQUENCE)
+    for n in nets:
+        networkx.set_edge_attributes(n, next(color_cycle), name="color")
+    net = networkx.compose_all(nets)
+
     if not net.nodes:
         print(
             f"The reaction network is empty. Skipping visualization...\n{string(net)}"
@@ -81,7 +143,10 @@ def display(
     for k1, k2, d in net.edges.data():
         rcts = d[Reaction.reactants]
         prds = d[Reaction.products]
-        mech_vis.add_edge(k1, k2, title=data.reac.write_chemkin_equation(rcts, prds))
+        color = d["color"]
+        mech_vis.add_edge(
+            k1, k2, title=data.reac.write_chemkin_equation(rcts, prds), color=color
+        )
 
     # Generate the HTML file
     mech_vis.write_html(str(out_dir / out_name), open_browser=open_browser)
