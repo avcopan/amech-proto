@@ -78,7 +78,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
         Species.smiles: smis,
     }
     spc_df = polars.DataFrame(
-        data=data_dct, schema=schema.types([Species], data_dct.keys())
+        data=data_dct, schema=schema.species_types(data_dct.keys())
     )
 
     spc_df = schema.species_table(spc_df)

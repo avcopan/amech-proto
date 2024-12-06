@@ -16,6 +16,10 @@ Values = Sequence[object]
 Value_ = Value | Values
 
 
+def with_index(df: polars.DataFrame, name: str = "index") -> polars.DataFrame:
+    return df.with_row_index(name=name)
+
+
 def temp_column(length: int = 24) -> str:
     """Generate a unique temporary column name for a dataframe.
 

@@ -139,7 +139,7 @@ def reactions(
         ReactionRate.rate: rates,
         ReactionRate.colliders: coll_dcts,
     }
-    schema_dct = schema.types([Reaction, ReactionRate], keys=data_dct.keys())
+    schema_dct = schema.reaction_types(keys=data_dct.keys())
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
     rxn_df, err = schema.reaction_table(

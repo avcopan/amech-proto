@@ -25,6 +25,13 @@ COLOR_SEQUENCE = [
 ]
 
 
+class Key:
+    id = "_id"
+    color = "color"
+    excluded_species = "excluded_species"
+    excluded_reactions = "excluded_reactions"
+
+
 # transformation
 def connected_components(net: networkx.Graph) -> list[networkx.Graph]:
     """Determine the connected components of a network.
@@ -105,7 +112,7 @@ def display(
     # Set different edge colors to distinguish components
     color_cycle = itertools.cycle(COLOR_SEQUENCE)
     for n in nets:
-        networkx.set_edge_attributes(n, next(color_cycle), name="color")
+        networkx.set_edge_attributes(n, next(color_cycle), name=Key.color)
     net = networkx.compose_all(nets)
 
     if not net.nodes:
@@ -143,7 +150,7 @@ def display(
     for k1, k2, d in net.edges.data():
         rcts = d[Reaction.reactants]
         prds = d[Reaction.products]
-        color = d["color"]
+        color = d[Key.color]
         mech_vis.add_edge(
             k1, k2, title=data.reac.write_chemkin_equation(rcts, prds), color=color
         )

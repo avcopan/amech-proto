@@ -146,7 +146,7 @@ def from_smiles(
     spin_dct = {chi_dct[k]: v for k, v in spin_dct.items() if k in spc_smis}
     charge_dct = {chi_dct[k]: v for k, v in charge_dct.items() if k in spc_smis}
     data_dct = {Species.smiles: spc_smis, Species.amchi: chis}
-    dt = schema.types([Species], data_dct.keys())
+    dt = schema.species_types(data_dct.keys())
     spc_df = polars.DataFrame(data=data_dct, schema=dt)
     spc_df = schema.species_table(
         spc_df, name_dct=name_dct, spin_dct=spin_dct, charge_dct=charge_dct
@@ -162,7 +162,7 @@ def from_smiles(
         }
         for rs, ps in rxn_smis_lst
     ]
-    dt = schema.types([Reaction], [Reaction.reactants, Reaction.products])
+    dt = schema.reaction_types([Reaction.reactants, Reaction.products])
     rxn_df = polars.DataFrame(data=data_lst, schema=dt)
     return from_data(rxn_df, spc_df)
 
@@ -441,7 +441,7 @@ def network(
 
     :param mech: A mechanism
     :param node_exclude_formulas: Formulas for species to be excluded as nodes
-    :return: The mechanism network
+    :return: The reaction network
     """
     excl_spc_names = species_names(mech, formulas=node_exclude_formulas)
 
@@ -465,6 +465,7 @@ def network(
 
     # Prepare node data
     spc_df = species(mech)
+    spc_df = df_.with_index(spc_df, net_.Key.id)  # Add IDs for back conversion
     spc_expr = polars.col(Species.name).is_in(excl_spc_names)
     excl_spc_df = spc_df.filter(spc_expr)
     incl_spc_df = spc_df.filter(~spc_expr)
@@ -474,6 +475,7 @@ def network(
 
     # Prepare edge data
     rxn_df = reactions(mech)
+    rxn_df = df_.with_index(rxn_df, net_.Key.id)  # Add IDs for back conversion
     rxn_df = rxn_df.with_row_index("id")
     rxn_expr = (
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -486,10 +488,11 @@ def network(
     incl_rxn_data = _edge_data_from_dicts(incl_rxn_df.to_dicts())
     excl_rxn_data = _edge_data_from_dicts(excl_rxn_df.to_dicts())
 
-    mech_net = networkx.Graph(
-        excluded_species=excl_spc_data, excluded_reactions=excl_rxn_data
-    )
-
+    excl_data = {
+        net_.Key.excluded_species: excl_spc_data,
+        net_.Key.excluded_reactions: excl_rxn_data,
+    }
+    mech_net = networkx.Graph(**excl_data)
     mech_net.add_nodes_from(incl_spc_data)
     mech_net.add_edges_from(incl_rxn_data)
     return mech_net

@@ -14,7 +14,7 @@ from automech.util import df_
 Model = pa.DataFrameModel
 
 
-# Core table schemas
+# Species table schemas
 class Species(Model):
     """Core species table."""
 
@@ -24,22 +24,6 @@ class Species(Model):
     spin: int
     charge: int
     formula: Struct
-
-
-class Reaction(Model):
-    """Core reaction table."""
-
-    reactants: list[str]
-    products: list[str]
-    formula: Struct
-
-
-# Extended tables
-class ReactionRate(Model):
-    """Reaction table with rate."""
-
-    rate: Struct
-    colliders: Struct
 
 
 class SpeciesThermo(Model):
@@ -54,19 +38,38 @@ class SpeciesRenamed(Model):
     orig_name: str
 
 
-class ReactionRenamed(Model):
-    """Renamed reaction table."""
-
-    orig_reactants: str
-    orig_products: str
-
-
 class SpeciesStereo(Model):
     """Stereo-expanded species table."""
 
     orig_name: str
     orig_smiles: str
     orig_amchi: str
+
+
+SPECIES_MODELS = (Species, SpeciesThermo, SpeciesRenamed, SpeciesStereo)
+
+
+# Reaction table schemas
+class Reaction(Model):
+    """Core reaction table."""
+
+    reactants: list[str]
+    products: list[str]
+    formula: Struct
+
+
+class ReactionRate(Model):
+    """Reaction table with rate."""
+
+    rate: Struct
+    colliders: Struct
+
+
+class ReactionRenamed(Model):
+    """Renamed reaction table."""
+
+    orig_reactants: str
+    orig_products: str
 
 
 class ReactionStereo(Model):
@@ -88,6 +91,16 @@ class ReactionMisc(Model):
     """Miscellaneous reaction columns (not for validation)."""
 
     orig_rate: Struct
+
+
+REACTION_MODELS = (
+    Reaction,
+    ReactionRate,
+    ReactionRenamed,
+    ReactionStereo,
+    ReactionCheck,
+    ReactionMisc,
+)
 
 
 # Error data structure
@@ -125,6 +138,22 @@ def types(
     return type_dct
 
 
+def species_types(keys: Sequence[str] | None = None) -> dict[str, type]:
+    """Get a dictionary mapping column names to types for species tables.
+
+    :return: The schema, as a mapping of column names onto types
+    """
+    return types(SPECIES_MODELS, keys)
+
+
+def reaction_types(keys: Sequence[str] | None = None) -> dict[str, type]:
+    """Get a dictionary mapping column names to types for species tables.
+
+    :return: The schema, as a mapping of column names onto types
+    """
+    return types(REACTION_MODELS, keys)
+
+
 def species_table(
     df: polars.DataFrame,
     models: Sequence[Model] = (),
@@ -145,7 +174,7 @@ def species_table(
     if Species not in models:
         models = (Species, *models)
 
-    dt_dct = types([Species])
+    dt_dct = species_types()
     df = df.rename({k: str.lower(k) for k in df.columns})
     assert (
         Species.amchi in df or Species.smiles in df
@@ -333,6 +362,9 @@ def _reaction_table_with_formula(
     if Reaction.formula in df and spc_df is None:
         return df
 
+    dt_dct = reaction_types()
+    dt = dt_dct.get(Reaction.formula)
+
     if spc_df is None:
         df = df.with_columns(polars.lit({"H": None}).alias(Reaction.formula))
     else:
@@ -342,14 +374,7 @@ def _reaction_table_with_formula(
         formulas = spc_df[Species.formula]
         expr = polars.element().replace_strict(names, formulas, default={"H": None})
         df = df.with_columns(polars.col(col_in).list.eval(expr).alias(col_tmp))
-        type_dct = types([Reaction])
-        df = df_.map_(
-            df,
-            col_tmp,
-            col_out,
-            automol.form.join_sequence,
-            dtype_=type_dct.get(Reaction.formula),
-        )
+        df = df_.map_(df, col_tmp, col_out, automol.form.join_sequence, dtype_=dt)
         df = df.drop(col_tmp)
 
     return df
