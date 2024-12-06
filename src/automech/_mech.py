@@ -87,6 +87,7 @@ def from_data(
     rate_units: tuple[str, str] | None = None,
     rxn_models: Sequence[Model] = (),
     spc_models: Sequence[Model] = (),
+    fail_on_error: bool = True,
 ) -> Mechanism:
     """Contruct a mechanism object from data.
 
@@ -94,13 +95,15 @@ def from_data(
     :param spc_inp: A species table, as a CSV file path or dataframe
     :param rxn_models: Extra reaction models to validate against
     :param spc_models: Extra species models to validate against
-    :param drop_spc: Drop unused species from the mechanism?
+    :param fail_on_error: Whether to raise an exception of there is an inconsistency
     :return: The mechanism object
     """
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
     rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
     spc_df = schema.species_table(spc_df, models=spc_models)
-    rxn_df, _ = schema.reaction_table(rxn_df, models=rxn_models, spc_df=spc_df)
+    rxn_df, _ = schema.reaction_table(
+        rxn_df, models=rxn_models, spc_df=spc_df, fail_on_error=fail_on_error
+    )
     mech = Mechanism(
         reactions=rxn_df,
         species=spc_df,
@@ -139,7 +142,7 @@ def from_network(net: networkx.MultiGraph) -> Mechanism:
             .unique(net_.Key.id, maintain_order=True)
         )
     )
-    return from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+    return from_data(rxn_inp=rxn_df, spc_inp=spc_df, fail_on_error=False)
 
 
 def from_smiles(
@@ -587,25 +590,21 @@ def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
 
 def neighborhood(
     mech: Mechanism,
-    spc_names: Sequence[str] = (),
-    order: int = 1,
+    spc_names: Sequence[str],
+    radius: int = 1,
     exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
 ) -> Mechanism:
-    """Determine the n^th neighborhood of a subset of species.
-
-    Determined as follows:
-        1. Select all reactions involving the current species list
-        2. Add any new species from these reactions to the species list
-        3. Repeat n times
+    """Determine the neighborhood of a set of species.
 
     :param mech: A mechanism
-    :param spc_names: A list of species names, defaults to ()
+    :param spc_names: A list of species names
+    :param radius: Maximum distance of neighbors to include
     :param exclude_formulas: Formula strings of molecules to exclude from the network,
         using * for wildcard stoichiometry, defaults to ("H*", "OH*", "O2H*", "CH*")
     :return: The nth neighborhood mechanism
     """
     mech0 = mech
-    for _ in range(order):
+    for _ in range(radius):
         mech = with_species(mech0, spc_names=spc_names, strict=False)
         spc_names = species_names(
             mech, rxn_only=True, exclude_formulas=exclude_formulas
