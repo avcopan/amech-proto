@@ -31,14 +31,6 @@ class Reaction(Model):
 
     reactants: list[str]
     products: list[str]
-    # formula: Struct
-
-
-class ReactionNew(Model):
-    """Core reaction table."""
-
-    reactants: list[str]
-    products: list[str]
     formula: Struct
 
 
@@ -309,7 +301,7 @@ def reaction_table_with_formula(
             df, spc_df=spc_df, col_in=Reaction.products, col_out=col_tmp
         )
         df = df.with_columns(
-            (polars.col(ReactionNew.formula) != polars.col(col_tmp)).alias(
+            (polars.col(Reaction.formula) != polars.col(col_tmp)).alias(
                 ReactionCheck.has_unbalanced_formula
             )
         )
@@ -322,7 +314,7 @@ def _reaction_table_with_formula(
     df: polars.DataFrame,
     spc_df: polars.DataFrame | None = None,
     col_in: str = Reaction.reactants,
-    col_out: str = ReactionNew.formula,
+    col_out: str = Reaction.formula,
 ) -> polars.DataFrame:
     """Determine reaction formulas from their reagents (reactants or products).
 
@@ -338,11 +330,11 @@ def _reaction_table_with_formula(
     """
     # If the column already exists and we haven't passed in a species dataframe, make
     # sure we don't wipe it out
-    if ReactionNew.formula in df and spc_df is None:
+    if Reaction.formula in df and spc_df is None:
         return df
 
     if spc_df is None:
-        df = df.with_columns(polars.lit({"H": None}).alias(ReactionNew.formula))
+        df = df.with_columns(polars.lit({"H": None}).alias(Reaction.formula))
     else:
         col_tmp = df_.temp_column()
         spc_df = species_table(spc_df)
@@ -350,7 +342,14 @@ def _reaction_table_with_formula(
         formulas = spc_df[Species.formula]
         expr = polars.element().replace_strict(names, formulas, default={"H": None})
         df = df.with_columns(polars.col(col_in).list.eval(expr).alias(col_tmp))
-        df = df_.map_(df, col_tmp, col_out, automol.form.join_sequence)
+        type_dct = types([Reaction])
+        df = df_.map_(
+            df,
+            col_tmp,
+            col_out,
+            automol.form.join_sequence,
+            dtype_=type_dct.get(Reaction.formula),
+        )
         df = df.drop(col_tmp)
 
     return df
