@@ -110,6 +110,38 @@ def from_data(
     return mech
 
 
+def from_network(net: networkx.MultiGraph) -> Mechanism:
+    """Generate a mechanism from a reaction network.
+
+    :param net: A reaction network
+    :return: The mechanism
+    """
+    spc_data = [d for *_, d in net.nodes.data()]
+    spc_data.extend([d for *_, d in net.graph.get(net_.Key.excluded_species)])
+    rxn_data = [d for *_, d in net.edges.data()]
+    rxn_data.extend([d for *_, d in net.graph.get(net_.Key.excluded_reactions)])
+
+    spc_df = (
+        polars.DataFrame([])
+        if not spc_data
+        else (
+            polars.DataFrame(spc_data)
+            .sort(net_.Key.id)
+            .unique(net_.Key.id, maintain_order=True)
+        )
+    )
+    rxn_df = (
+        polars.DataFrame([])
+        if not rxn_data
+        else (
+            polars.DataFrame(rxn_data)
+            .sort(net_.Key.id)
+            .unique(net_.Key.id, maintain_order=True)
+        )
+    )
+    return from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+
+
 def from_smiles(
     spc_smis: Sequence[str] = (),
     rxn_smis: Sequence[str] = (),
@@ -436,7 +468,7 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
 
 def network(
     mech: Mechanism, node_exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS
-) -> networkx.Graph:
+) -> networkx.MultiGraph:
     """Generate a network graph representation of the mechanism.
 
     :param mech: A mechanism
@@ -449,18 +481,14 @@ def network(
         names = [d.get(Species.name) for d in dcts]
         return list(zip(names, dcts, strict=True))
 
-    def _edge_data_from_dicts(dcts: Sequence[dict]) -> dict:
+    def _edge_data_from_dicts(dcts: Sequence[dict], filter: bool = False) -> dict:
         edge_data = []
         for dct in dcts:
             rcts = dct.get(Reaction.reactants)
             prds = dct.get(Reaction.products)
-            edge_keys = [
-                (r, p)
-                for r, p in itertools.product(rcts, prds)
-                if r not in excl_spc_names and p not in excl_spc_names
-            ]
-            for edge_key in edge_keys:
-                edge_data.append((*edge_key, dct))
+            for edge_key in itertools.product(rcts, prds):
+                if not filter or not any(n in excl_spc_names for n in edge_key):
+                    edge_data.append((*edge_key, dct))
         return edge_data
 
     # Prepare node data
@@ -474,25 +502,27 @@ def network(
     excl_spc_data = _node_data_from_dicts(excl_spc_df.to_dicts())
 
     # Prepare edge data
+    def node_is_excluded_expression(key: str) -> polars.Expr:
+        return (
+            polars.col(key).list.eval(polars.element().is_in(excl_spc_names)).list.all()
+        )
+
     rxn_df = reactions(mech)
     rxn_df = df_.with_index(rxn_df, net_.Key.id)  # Add IDs for back conversion
-    rxn_df = rxn_df.with_row_index("id")
-    rxn_expr = (
-        polars.concat_list(Reaction.reactants, Reaction.products)
-        .list.eval(polars.element().is_in(excl_spc_names))
-        .list.all()
-    )
-    excl_rxn_df = rxn_df.filter(rxn_expr)
-    incl_rxn_df = rxn_df.filter(~rxn_expr)
+    is_excl_expr = node_is_excluded_expression(
+        Reaction.reactants
+    ) | node_is_excluded_expression(Reaction.products)
+    excl_rxn_df = rxn_df.filter(is_excl_expr)
+    incl_rxn_df = rxn_df.filter(~is_excl_expr)
 
-    incl_rxn_data = _edge_data_from_dicts(incl_rxn_df.to_dicts())
+    incl_rxn_data = _edge_data_from_dicts(incl_rxn_df.to_dicts(), filter=True)
     excl_rxn_data = _edge_data_from_dicts(excl_rxn_df.to_dicts())
 
     excl_data = {
         net_.Key.excluded_species: excl_spc_data,
         net_.Key.excluded_reactions: excl_rxn_data,
     }
-    mech_net = networkx.Graph(**excl_data)
+    mech_net = networkx.MultiGraph(**excl_data)
     mech_net.add_nodes_from(incl_spc_data)
     mech_net.add_edges_from(incl_rxn_data)
     return mech_net

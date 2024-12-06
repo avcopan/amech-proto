@@ -26,14 +26,14 @@ COLOR_SEQUENCE = [
 
 
 class Key:
-    id = "_id"
+    id = "id_"
     color = "color"
     excluded_species = "excluded_species"
     excluded_reactions = "excluded_reactions"
 
 
 # transformation
-def connected_components(net: networkx.Graph) -> list[networkx.Graph]:
+def connected_components(net: networkx.MultiGraph) -> list[networkx.MultiGraph]:
     """Determine the connected components of a network.
 
     :param net: A reaction network
@@ -43,8 +43,8 @@ def connected_components(net: networkx.Graph) -> list[networkx.Graph]:
 
 
 def pes_components(
-    net: networkx.Graph, formula: dict | str | None = None
-) -> list[networkx.Graph]:
+    net: networkx.MultiGraph, formula: dict | str | None = None
+) -> list[networkx.MultiGraph]:
     """Determine the PES components in a network.
 
     :param net: A reaction network
@@ -54,7 +54,7 @@ def pes_components(
     return list(itertools.chain(*map(connected_components, pes_nets)))
 
 
-def pes_networks(net: networkx.Graph) -> list[networkx.Graph]:
+def pes_networks(net: networkx.MultiGraph) -> list[networkx.MultiGraph]:
     """Determine the PES networks in a larger reaction network.
 
     :param net: A reaction network
@@ -64,7 +64,7 @@ def pes_networks(net: networkx.Graph) -> list[networkx.Graph]:
     return [pes_network(net, f) for f in fmls]
 
 
-def pes_network(net: networkx.Graph, formula: dict | str) -> networkx.Graph:
+def pes_network(net: networkx.MultiGraph, formula: dict | str) -> networkx.MultiGraph:
     """Select the network associated with a specific PES.
 
     :param net: A reaction network
@@ -72,26 +72,35 @@ def pes_network(net: networkx.Graph, formula: dict | str) -> networkx.Graph:
     :return: The PES network
     """
     edge_keys = [
-        (k1, k2)
-        for k1, k2, d in net.edges.data()
+        tuple(k)
+        for *k, d in net.edges.data(keys=True)
         if automol.form.equal(d[Reaction.formula], formula)
     ]
     return net.edge_subgraph(edge_keys)
 
 
 # serialization
-def string(net: networkx.Graph) -> str:
+def dict_(net: networkx.MultiGraph) -> dict[object, object]:
     """Serialize a reaction network as a string.
 
     :param net: A reaction network
     :return: The string serialization
     """
-    return repr(networkx.adjacency_data(net))
+    return networkx.adjacency_data(net)
+
+
+def string(net: networkx.MultiGraph) -> str:
+    """Serialize a reaction network as a string.
+
+    :param net: A reaction network
+    :return: The string serialization
+    """
+    return repr(dict_(net))
 
 
 # display
 def display(
-    net_: networkx.Graph | Sequence[networkx.Graph],
+    net_: networkx.MultiGraph | Sequence[networkx.MultiGraph],
     stereo: bool = True,
     out_name: str = "net.html",
     out_dir: str = ".automech",
@@ -106,7 +115,7 @@ def display(
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
     """
-    nets = [net_] if isinstance(net_, networkx.Graph) else net_
+    nets = [net_] if isinstance(net_, networkx.MultiGraph) else net_
     nets = [n.copy() for n in nets]
 
     # Set different edge colors to distinguish components

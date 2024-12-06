@@ -43,6 +43,33 @@ MECH_BUTENE_ALTERNATIVE_NAMES = automech.from_smiles(
         "[OH]": "hydroxyl",
     },
 )
+MECH_BUTENE_WITH_EXCLUDED_REACTIONS = automech.from_smiles(
+    rxn_smis=[
+        "CC=CC.[OH]>>CC=C[CH2].O",
+        "CC=CC.[OH]>>C[CH]C(O)C",
+        "CC=CC.[O]>>CC1C(O1)C",
+        "[OH].[OH]>>OO",
+    ],
+    name_dct={"CC=CC": "C4e2", "CC=C[CH2]": "C4e2y1", "CC1C(O1)C": "C4x23"},
+)
+
+
+@pytest.mark.parametrize(
+    "mech0",
+    [
+        MECH_EMPTY,
+        MECH_NO_REACIONS,
+        MECH_PROPANE,
+        MECH_BUTENE,
+        MECH_BUTENE_WITH_EXCLUDED_REACTIONS,
+    ],
+)
+def test__network(mech0):
+    """Test automech.network."""
+    mech = automech.from_network(automech.network(mech0))
+    print(mech)
+    assert automech.species_count(mech0) == automech.species_count(mech)
+    assert automech.reaction_count(mech0) == automech.reaction_count(mech)
 
 
 @pytest.mark.parametrize(
@@ -140,5 +167,6 @@ if __name__ == "__main__":
     # test__expand_stereo(MECH_NO_REACIONS, 0, 2, 0, 2, False)
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
-    test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
+    # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
+    test__network(MECH_BUTENE_WITH_EXCLUDED_REACTIONS)

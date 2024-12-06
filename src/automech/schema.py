@@ -174,6 +174,9 @@ def species_table(
     if Species not in models:
         models = (Species, *models)
 
+    if df.is_empty():
+        df = polars.DataFrame([], schema={**df.schema, **types(models)})
+
     dt_dct = species_types()
     df = df.rename({k: str.lower(k) for k in df.columns})
     assert (
@@ -265,6 +268,9 @@ def reaction_table(
     if Reaction not in models:
         models = (Reaction, *models)
 
+    if df.is_empty():
+        df = polars.DataFrame([], schema={**df.schema, **types(models)})
+
     df = df.rename({k: str.lower(k) for k in df.columns})
     df = reaction_table_with_missing_species_check(df, spc_df=spc_df)
     df = reaction_table_with_formula(df, spc_df=spc_df, check=True)
@@ -276,6 +282,7 @@ def reaction_table(
 
     err = Errors(reactions=err_df)
     df = df.filter(~check_expr)
+    df = df.drop(check_cols)
 
     for model in models:
         df = model.validate(df)

@@ -12,6 +12,7 @@ from ._mech import (
     expand_parent_stereo,
     expand_stereo,
     from_data,
+    from_network,
     from_smiles,
     from_string,
     neighborhood,
@@ -43,6 +44,7 @@ __all__ = [
     "Mechanism",
     # functions
     "from_data",
+    "from_network",
     "from_smiles",
     # getters
     "species",
