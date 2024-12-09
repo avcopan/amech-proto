@@ -169,4 +169,5 @@ if __name__ == "__main__":
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
-    test__network(MECH_BUTENE_WITH_EXCLUDED_REACTIONS)
+    # test__network(MECH_BUTENE_WITH_EXCLUDED_REACTIONS)
+    test__display(MECH_NO_REACIONS, None, None)

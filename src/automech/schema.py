@@ -7,7 +7,7 @@ import automol
 import pandera.polars as pa
 import polars
 from polars.datatypes import Struct
-from pydantic import BaseModel as PydanticBaseModel
+from pydantic import BaseModel, ConfigDict
 
 from automech.util import df_
 
@@ -104,15 +104,10 @@ REACTION_MODELS = (
 
 
 # Error data structure
-class BaseModel(PydanticBaseModel):
-    class Config:
-        """Configuration."""
-
-        arbitrary_types_allowed = True
-
-
 class Errors(BaseModel):
     """Error values."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     species: polars.DataFrame | None = None
     reactions: polars.DataFrame | None = None

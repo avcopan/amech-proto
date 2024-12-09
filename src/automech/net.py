@@ -137,6 +137,15 @@ def subpes_networks(
     return subpes_nets
 
 
+def isolates(net: networkx.MultiGraph) -> networkx.MultiGraph:
+    """Get isolated species as a "network".
+
+    :param net: A network
+    :return: The isolated species
+    """
+    return subnetwork(net, networkx.isolates(net))
+
+
 def pes_network(net: networkx.MultiGraph, formula: dict | str) -> networkx.MultiGraph:
     """Select the network associated with a specific PES.
 
@@ -153,14 +162,20 @@ def pes_network(net: networkx.MultiGraph, formula: dict | str) -> networkx.Multi
     return edge_subnetwork(net, edge_keys)
 
 
-def pes_networks(net: networkx.MultiGraph) -> list[networkx.MultiGraph]:
+def pes_networks(
+    net: networkx.MultiGraph, with_isolates: bool = False
+) -> list[networkx.MultiGraph]:
     """Determine the PES networks in a larger network.
 
     :param net: A network
+    :param with_isolates: Whether to include isolated species as a "network"
     :return: The PES component networks
     """
     fmls = automol.form.unique([d[Reaction.formula] for *_, d in net.edges.data()])
-    return [pes_network(net, f) for f in fmls]
+    nets = [pes_network(net, f) for f in fmls]
+    if with_isolates:
+        nets.append(isolates(net))
+    return nets
 
 
 def extend_subnetwork_along_pes(
@@ -198,9 +213,11 @@ def neighborhood(
     nei_nets = [
         networkx.ego_graph(net, n, radius=radius, undirected=True) for n in spc_names
     ]
-    for nei_net in nei_nets:
-        nei_net.graph = dict(net.graph).copy()
-    return union_all(nei_nets)
+    for nei_net_ in nei_nets:
+        nei_net_.graph = dict(net.graph).copy()
+    nei_net = union_all(nei_nets)
+    nei_net.graph[Key.excluded_reactions] = []
+    return nei_net
 
 
 # serialization
@@ -248,7 +265,7 @@ def display(
     # Set different edge colors to distinguish components
     if color_pes:
         color_cycle = itertools.cycle(COLOR_SEQUENCE)
-        nets = pes_networks(net)
+        nets = pes_networks(net, with_isolates=True)
         for n in nets:
             networkx.set_edge_attributes(n, next(color_cycle), name=Key.color)
         net = union_all(nets)
