@@ -14,7 +14,7 @@ def with_reaction_key(
     col_name: str = "key",
     spc_key_dct: dict[str, object] | None = None,
 ) -> polars.DataFrame:
-    """Addd a key for identifying unique reactions to this dataframe.
+    """Add a key for identifying unique reactions to this dataframe.
 
     The key is formed by sorting reactants and products and then sorting the direction
     of the reaction.
@@ -30,9 +30,10 @@ def with_reaction_key(
     :return: A reactions dataframe with this key as a new column
     """
 
-    def _key(rct0s, prd0s):
-        rcts = list(map(spc_key_dct.get, rct0s))
-        prds = list(map(spc_key_dct.get, prd0s))
+    def _key(rcts, prds):
+        if spc_key_dct is not None:
+            rcts = list(map(spc_key_dct.get, rcts))
+            prds = list(map(spc_key_dct.get, prds))
         rcts, prds = sorted([sorted(rcts), sorted(prds)])
         return data.reac.write_chemkin_equation(rcts, prds)
 

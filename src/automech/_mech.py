@@ -685,6 +685,20 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
     return set_species(mech, spc_df)
 
 
+def without_duplicate_reactions(mech: Mechanism) -> Mechanism:
+    """Remove duplicate reactions from a mechanism.
+
+    :param mech: A mechanism
+    :return: The mechanism, without duplicate reactions
+    """
+    col_tmp = df_.temp_column()
+    rxn_df = reactions(mech)
+    rxn_df = reac_table.with_reaction_key(rxn_df, col_name=col_tmp)
+    rxn_df = rxn_df.unique(col_tmp, maintain_order=True)
+    rxn_df = rxn_df.drop(col_tmp)
+    return set_reactions(mech, rxn_df)
+
+
 def expand_stereo(
     mech: Mechanism,
     enant: bool = True,

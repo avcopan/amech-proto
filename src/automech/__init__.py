@@ -36,6 +36,7 @@ from ._mech import (
     update_parent_reaction_data,
     update_parent_species_data,
     with_species,
+    without_duplicate_reactions,
     without_unused_species,
 )
 
@@ -70,6 +71,7 @@ __all__ = [
     "neighborhood",
     "with_species",
     "without_unused_species",
+    "without_duplicate_reactions",
     "expand_stereo",
     "expand_parent_stereo",
     "drop_parent_reactions",
