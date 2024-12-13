@@ -1,6 +1,6 @@
 """Data processing at the level of whole mechanisms."""
 
-from . import data, io, net, schema, util
+from . import data, io, old_net, schema, util
 from ._mech import (
     Mechanism,
     add_reactions,
@@ -16,7 +16,6 @@ from ._mech import (
     from_smiles,
     from_string,
     neighborhood,
-    network,
     rate_units,
     reaction_count,
     reaction_equations,
@@ -31,6 +30,7 @@ from ._mech import (
     species,
     species_count,
     species_names,
+    species_network,
     string,
     thermo_temperatures,
     update_parent_reaction_data,
@@ -63,7 +63,7 @@ __all__ = [
     "species_names",
     "reaction_equations",
     "rename_dict",
-    "network",
+    "species_network",
     # transformations
     "rename",
     "remove_all_reactions",
@@ -91,5 +91,5 @@ __all__ = [
     "data",
     "util",
     "schema",
-    "net",
+    "old_net",
 ]

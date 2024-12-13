@@ -12,7 +12,7 @@ import networkx
 import polars
 
 from . import data, reac_table, schema
-from . import net as net_
+from . import old_net as net_
 from .schema import (
     Model,
     Reaction,
@@ -469,7 +469,58 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     return name_dct, missing_names
 
 
-def network(
+def reaction_network(
+    mech: Mechanism,
+) -> networkx.MultiGraph:
+    """Generate a network graph representation of the mechanism.
+
+    :param mech: A mechanism
+    :param node_exclude_formulas: Formulas for species to be excluded as nodes
+    :return: The reaction network
+    """
+    spc_df = species(mech)
+    rxn_df = reactions(mech)
+
+    # Double-check that the reagents are sorted
+    rxn_df = schema.reaction_table_with_sorted_reagents(rxn_df)
+
+    # Add species and reaction indices
+    spc_df = df_.with_index(spc_df, net_.Key.id)
+    rxn_df = df_.with_index(rxn_df, net_.Key.id)
+
+    # Get a dataframe of reagents
+    rgt_col = "reagents"
+    rgt_exprs = [
+        rxn_df.select(polars.col(Reaction.reactants).alias(rgt_col), Reaction.formula),
+        rxn_df.select(polars.col(Reaction.products).alias(rgt_col), Reaction.formula),
+    ]
+    rgt_df = polars.concat(rgt_exprs).group_by(rgt_col).first()
+
+    # Append species data to the reagents dataframe
+    names = spc_df[Species.name]
+    datas = spc_df.to_struct()
+    expr = polars.element().replace_strict(names, datas)
+    rgt_df = rgt_df.with_columns(
+        polars.col(rgt_col).list.eval(expr).alias(net_.Key.species)
+    )
+
+    # Build the network object
+    def _node_data_from_dict(dct: dict[str, object]):
+        key = tuple(dct.get(rgt_col))
+        return (key, dct)
+
+    def _edge_data_from_dict(dct: dict[str, object]):
+        key1 = tuple(dct.get(Reaction.reactants))
+        key2 = tuple(dct.get(Reaction.products))
+        return (key1, key2, dct)
+
+    mech_net = networkx.MultiGraph()
+    mech_net.add_nodes_from(map(_node_data_from_dict, rgt_df.to_dicts()))
+    mech_net.add_edges_from(map(_edge_data_from_dict, rxn_df.to_dicts()))
+    return mech_net
+
+
+def species_network(
     mech: Mechanism, node_exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS
 ) -> networkx.MultiGraph:
     """Generate a network graph representation of the mechanism.
@@ -1087,7 +1138,7 @@ def display(
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
     """
-    mech_net = network(mech, node_exclude_formulas=node_exclude_formulas)
+    mech_net = species_network(mech, node_exclude_formulas=node_exclude_formulas)
     net_.display(
         mech_net,
         stereo=stereo,

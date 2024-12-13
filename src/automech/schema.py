@@ -267,9 +267,10 @@ def reaction_table(
         df = polars.DataFrame([], schema={**df.schema, **types(models)})
 
     df = df.rename({k: str.lower(k) for k in df.columns})
+    df = reaction_table_with_sorted_reagents(df)
     df = reaction_table_with_missing_species_check(df, spc_df=spc_df)
     df = reaction_table_with_formula(df, spc_df=spc_df, check=True)
-    check_cols = ReactionCheck.to_schema().columns
+    check_cols = [c for c in ReactionCheck.to_schema().columns if c in df]
     check_expr = polars.concat_list(check_cols).list.any()
     err_df = df.filter(check_expr)
     if fail_on_error:
@@ -286,6 +287,17 @@ def reaction_table(
     return df, err
 
 
+def reaction_table_with_sorted_reagents(df: polars.DataFrame) -> polars.DataFrame:
+    """Sort the reagents columns in the reaction table.
+
+    :param df: A reactions table
+    :return: The reactions table
+    """
+    df = df.with_columns(polars.col(Reaction.reactants).list.sort())
+    df = df.with_columns(polars.col(Reaction.products).list.sort())
+    return df
+
+
 def reaction_table_with_missing_species_check(
     df: polars.DataFrame, spc_df: polars.DataFrame | None = None
 ) -> polars.DataFrame:
@@ -295,7 +307,7 @@ def reaction_table_with_missing_species_check(
 
     :param df: A reactions dataframe
     :param spc_df: A species dataframe
-    :return: _description_
+    :return: The reactions table
     """
     if spc_df is None:
         return df.with_columns(
@@ -325,7 +337,7 @@ def reaction_table_with_formula(
     :return: The reaction dataframe, with the new formula column
     """
     df = _reaction_table_with_formula(df, spc_df=spc_df)
-    if check:
+    if check and spc_df is not None:
         col_tmp = df_.temp_column()
 
         df = _reaction_table_with_formula(
@@ -368,7 +380,7 @@ def _reaction_table_with_formula(
     dt = dt_dct.get(Reaction.formula)
 
     if spc_df is None:
-        df = df.with_columns(polars.lit({"H": None}).alias(Reaction.formula))
+        df = df.with_columns(polars.lit({"H": None}).alias(col_out))
     else:
         col_tmp = df_.temp_column()
         spc_df = species_table(spc_df)

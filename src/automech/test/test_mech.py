@@ -66,7 +66,7 @@ MECH_BUTENE_WITH_EXCLUDED_REACTIONS = automech.from_smiles(
 )
 def test__network(mech0):
     """Test automech.network."""
-    mech = automech.from_network(automech.network(mech0))
+    mech = automech.from_network(automech.species_network(mech0))
     print(mech)
     assert automech.species_count(mech0) == automech.species_count(mech)
     assert automech.reaction_count(mech0) == automech.reaction_count(mech)
