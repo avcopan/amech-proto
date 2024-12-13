@@ -66,7 +66,10 @@ MECH_BUTENE_WITH_EXCLUDED_REACTIONS = automech.from_smiles(
 )
 def test__network(mech0):
     """Test automech.network."""
-    mech = automech.from_network(automech.species_network(mech0))
+    print(mech0)
+    print(automech.species_count(mech0))
+    print(automech.reaction_count(mech0))
+    mech = automech.from_network(automech.network(mech0))
     print(mech)
     assert automech.species_count(mech0) == automech.species_count(mech)
     assert automech.reaction_count(mech0) == automech.reaction_count(mech)
@@ -169,5 +172,5 @@ if __name__ == "__main__":
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
-    # test__network(MECH_BUTENE_WITH_EXCLUDED_REACTIONS)
-    test__display(MECH_NO_REACIONS, None, None)
+    test__network(MECH_NO_REACIONS)
+    # test__display(MECH_NO_REACIONS, None, None)

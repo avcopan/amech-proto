@@ -12,7 +12,7 @@ import networkx
 import polars
 
 from . import data, reac_table, schema
-from . import old_net as net_
+from . import net as net_
 from .schema import (
     Model,
     Reaction,
@@ -26,8 +26,6 @@ from .schema import (
     SpeciesThermo,
 )
 from .util import df_
-
-DEFAULT_EXCLUDE_FORMULAS = ("H*O*", "CH*")
 
 
 @dataclasses.dataclass
@@ -119,10 +117,12 @@ def from_network(net: networkx.MultiGraph) -> Mechanism:
     :param net: A reaction network
     :return: The mechanism
     """
-    spc_data = [d for *_, d in net.nodes.data()]
-    spc_data.extend([d for *_, d in net.graph.get(net_.Key.excluded_species)])
+    spc_data = list(
+        itertools.chain(*(d.get(net_.Key.species, [d]) for *_, d in net.nodes.data()))
+    )
     rxn_data = [d for *_, d in net.edges.data()]
-    rxn_data.extend([d for *_, d in net.graph.get(net_.Key.excluded_reactions)])
+    spc_data.extend(net.graph.get(net_.Key.excluded_species, []))
+    rxn_data.extend(net.graph.get(net_.Key.excluded_reactions, []))
 
     spc_df = (
         polars.DataFrame([])
@@ -469,10 +469,27 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     return name_dct, missing_names
 
 
-def reaction_network(
+def network(
     mech: Mechanism,
+    species_centered: bool = False,
+    exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
 ) -> networkx.MultiGraph:
-    """Generate a network graph representation of the mechanism.
+    """Generate a network representation of the mechanism.
+
+    :param mech: A mechanism
+    :param species_centered: Whether to return a species-centered network
+    :param exclude_formulas: Formulas for species to be excluded as nodes
+        (Only applies to species-centered networks)
+    :return: The network
+    """
+    net = _network(mech)
+    if species_centered:
+        net = net_.species_centered_network(net, exclude_formulas=exclude_formulas)
+    return net
+
+
+def _network(mech: Mechanism) -> networkx.MultiGraph:
+    """Generate a reaction network representation of the mechanism.
 
     :param mech: A mechanism
     :param node_exclude_formulas: Formulas for species to be excluded as nodes
@@ -504,6 +521,10 @@ def reaction_network(
         polars.col(rgt_col).list.eval(expr).alias(net_.Key.species)
     )
 
+    # Determine excluded species
+    rgt_names = list(mit.unique_everseen(itertools.chain(*rgt_df[rgt_col].to_list())))
+    excl_spcs = spc_df.filter(~polars.col(Species.name).is_in(rgt_names)).to_dicts()
+
     # Build the network object
     def _node_data_from_dict(dct: dict[str, object]):
         key = tuple(dct.get(rgt_col))
@@ -514,72 +535,10 @@ def reaction_network(
         key2 = tuple(dct.get(Reaction.products))
         return (key1, key2, dct)
 
-    mech_net = networkx.MultiGraph()
-    mech_net.add_nodes_from(map(_node_data_from_dict, rgt_df.to_dicts()))
-    mech_net.add_edges_from(map(_edge_data_from_dict, rxn_df.to_dicts()))
-    return mech_net
-
-
-def species_network(
-    mech: Mechanism, node_exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS
-) -> networkx.MultiGraph:
-    """Generate a network graph representation of the mechanism.
-
-    :param mech: A mechanism
-    :param node_exclude_formulas: Formulas for species to be excluded as nodes
-    :return: The reaction network
-    """
-    excl_spc_names = species_names(mech, formulas=node_exclude_formulas)
-
-    def _node_data_from_dicts(dcts: Sequence[dict]) -> dict:
-        names = [d.get(Species.name) for d in dcts]
-        return list(zip(names, dcts, strict=True))
-
-    def _edge_data_from_dicts(dcts: Sequence[dict], filter: bool = False) -> dict:
-        edge_data = []
-        for dct in dcts:
-            rcts = dct.get(Reaction.reactants)
-            prds = dct.get(Reaction.products)
-            for edge_key in itertools.product(rcts, prds):
-                if not filter or not any(n in excl_spc_names for n in edge_key):
-                    edge_data.append((*edge_key, dct))
-        return edge_data
-
-    # Prepare node data
-    spc_df = species(mech)
-    spc_df = df_.with_index(spc_df, net_.Key.id)  # Add IDs for back conversion
-    spc_expr = polars.col(Species.name).is_in(excl_spc_names)
-    excl_spc_df = spc_df.filter(spc_expr)
-    incl_spc_df = spc_df.filter(~spc_expr)
-
-    incl_spc_data = _node_data_from_dicts(incl_spc_df.to_dicts())
-    excl_spc_data = _node_data_from_dicts(excl_spc_df.to_dicts())
-
-    # Prepare edge data
-    def node_is_excluded_expression(key: str) -> polars.Expr:
-        return (
-            polars.col(key).list.eval(polars.element().is_in(excl_spc_names)).list.all()
-        )
-
-    rxn_df = reactions(mech)
-    rxn_df = df_.with_index(rxn_df, net_.Key.id)  # Add IDs for back conversion
-    is_excl_expr = node_is_excluded_expression(
-        Reaction.reactants
-    ) | node_is_excluded_expression(Reaction.products)
-    excl_rxn_df = rxn_df.filter(is_excl_expr)
-    incl_rxn_df = rxn_df.filter(~is_excl_expr)
-
-    incl_rxn_data = _edge_data_from_dicts(incl_rxn_df.to_dicts(), filter=True)
-    excl_rxn_data = _edge_data_from_dicts(excl_rxn_df.to_dicts())
-
-    excl_data = {
-        net_.Key.excluded_species: excl_spc_data,
-        net_.Key.excluded_reactions: excl_rxn_data,
-    }
-    mech_net = networkx.MultiGraph(**excl_data)
-    mech_net.add_nodes_from(incl_spc_data)
-    mech_net.add_edges_from(incl_rxn_data)
-    return mech_net
+    net = networkx.MultiGraph(**{net_.Key.excluded_species: excl_spcs})
+    net.add_nodes_from(map(_node_data_from_dict, rgt_df.to_dicts()))
+    net.add_edges_from(map(_edge_data_from_dict, rxn_df.to_dicts()))
+    return net
 
 
 # transformations
@@ -643,9 +602,12 @@ def neighborhood(
     mech: Mechanism,
     spc_names: Sequence[str],
     radius: int = 1,
-    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
+    exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
 ) -> Mechanism:
     """Determine the neighborhood of a set of species.
+
+    DEPRECATED: This should use the new reaction network data structure instead and
+    should be an edge-induced subnetwork rather than a node-induced one (like here)
 
     :param mech: A mechanism
     :param spc_names: A list of species names
@@ -1124,7 +1086,7 @@ def from_string(mech_str: str) -> Mechanism:
 def display(
     mech: Mechanism,
     stereo: bool = True,
-    node_exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
+    node_exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
@@ -1138,7 +1100,7 @@ def display(
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
     """
-    mech_net = species_network(mech, node_exclude_formulas=node_exclude_formulas)
+    mech_net = network(mech, exclude_formulas=node_exclude_formulas)
     net_.display(
         mech_net,
         stereo=stereo,
