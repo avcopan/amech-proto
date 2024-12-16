@@ -174,4 +174,5 @@ if __name__ == "__main__":
     # test__display(MECH_EMPTY, None, None)
     # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
-    test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
+    # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
+    test__network(MECH_NO_REACIONS)

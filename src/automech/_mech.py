@@ -117,11 +117,9 @@ def from_network(net: net_.Network) -> Mechanism:
     :return: The mechanism
     """
     spc_data = list(
-        itertools.chain(*(d.get(net_.Key.species, [d]) for *_, d in net.nodes.data()))
+        itertools.chain(*(d[net_.Key.species] for *_, d in net.nodes.data()))
     )
     rxn_data = [d for *_, d in net.edges.data()]
-    spc_data.extend(net.graph.get(net_.Key.excluded_species, []))
-    rxn_data.extend(net.graph.get(net_.Key.excluded_reactions, []))
 
     spc_df = (
         polars.DataFrame([])
@@ -470,26 +468,7 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     return name_dct, missing_names
 
 
-def network(
-    mech: Mechanism,
-    species_centered: bool = False,
-    exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
-) -> net_.Network:
-    """Generate a network representation of the mechanism.
-
-    :param mech: A mechanism
-    :param species_centered: Whether to return a species-centered network
-    :param exclude_formulas: Formulas for species to be excluded as nodes
-        (Only applies to species-centered networks)
-    :return: The network
-    """
-    net = _network(mech)
-    if species_centered:
-        net = net_.species_centered_network(net, exclude_formulas=exclude_formulas)
-    return net
-
-
-def _network(mech: Mechanism) -> net_.Network:
+def network(mech: Mechanism) -> net_.Network:
     """Generate a reaction network representation of the mechanism.
 
     :param mech: A mechanism
@@ -506,13 +485,24 @@ def _network(mech: Mechanism) -> net_.Network:
     spc_df = df_.with_index(spc_df, net_.Key.id)
     rxn_df = df_.with_index(rxn_df, net_.Key.id)
 
+    # Exluded species
+    rgt_names = list(
+        itertools.chain(
+            *rxn_df[Reaction.reactants].to_list(), *rxn_df[Reaction.products].to_list()
+        )
+    )
+    excl_spc_df = spc_df.filter(~polars.col(Species.name).is_in(rgt_names))
+
     # Get a dataframe of reagents
     rgt_col = "reagents"
     rgt_exprs = [
         rxn_df.select(polars.col(Reaction.reactants).alias(rgt_col), Reaction.formula),
         rxn_df.select(polars.col(Reaction.products).alias(rgt_col), Reaction.formula),
+        excl_spc_df.select(
+            polars.concat_list(Species.name).alias(rgt_col), Species.formula
+        ),
     ]
-    rgt_df = polars.concat(rgt_exprs).group_by(rgt_col).first()
+    rgt_df = polars.concat(rgt_exprs, how="vertical_relaxed").group_by(rgt_col).first()
 
     # Append species data to the reagents dataframe
     names = spc_df[Species.name]
@@ -521,10 +511,6 @@ def _network(mech: Mechanism) -> net_.Network:
     rgt_df = rgt_df.with_columns(
         polars.col(rgt_col).list.eval(expr).alias(net_.Key.species)
     )
-
-    # Determine excluded species
-    rgt_names = list(mit.unique_everseen(itertools.chain(*rgt_df[rgt_col].to_list())))
-    excl_spcs = spc_df.filter(~polars.col(Species.name).is_in(rgt_names)).to_dicts()
 
     # Build the network object
     def _node_data_from_dict(dct: dict[str, object]):
@@ -539,7 +525,6 @@ def _network(mech: Mechanism) -> net_.Network:
     return net_.from_data(
         node_data=list(map(_node_data_from_dict, rgt_df.to_dicts())),
         edge_data=list(map(_edge_data_from_dict, rxn_df.to_dicts())),
-        aux_data={net_.Key.excluded_species: excl_spcs},
     )
 
 
@@ -1088,7 +1073,9 @@ def from_string(mech_str: str) -> Mechanism:
 def display(
     mech: Mechanism,
     stereo: bool = True,
-    node_exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
+    color_subpes: bool = True,
+    species_centered: bool = False,
+    exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
@@ -1097,15 +1084,19 @@ def display(
 
     :param mech: The mechanism
     :param stereo: Include stereochemistry in species drawings?, defaults to True
-    :param node_exclude_formulas: Formulas for species to be excluded as nodes
+    :param color_pes: Add distinct colors to the different PESs
+    :param species_centered: Display as a species-centered network?
+    :param exclude_formulas: If species-centered, exclude these species from display
     :param out_name: The name of the HTML file for the network visualization
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
     """
-    mech_net = network(mech, exclude_formulas=node_exclude_formulas)
     net_.display(
-        mech_net,
+        net=network(mech),
         stereo=stereo,
+        color_subpes=color_subpes,
+        species_centered=species_centered,
+        exclude_formulas=exclude_formulas,
         out_name=out_name,
         out_dir=out_dir,
         open_browser=open_browser,

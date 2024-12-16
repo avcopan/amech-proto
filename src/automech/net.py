@@ -28,15 +28,8 @@ class Key:
 
 # type aliases
 Network = networkx.MultiGraph
-
-RNode = tuple[str, ...]
-SNode = str
-Node = RNode | SNode
-
-REdge = tuple[RNode, RNode]
-SEdge = tuple[SNode, SNode]
-Edge = REdge | SEdge
-
+Node = tuple[str, ...]
+Edge = tuple[Node, Node]
 Data = dict[str, object]
 NodeDatum = tuple[Node, Data]
 EdgeDatum = tuple[Node, Node, Data]
@@ -47,7 +40,7 @@ MultiEdgeDatum = tuple[Node, Node, int, Data]
 def from_data(
     node_data: list[Node | NodeDatum],
     edge_data: list[Edge | EdgeDatum | MultiEdgeDatum],
-    aux_data: Data,
+    aux_data: Data | None = None,
 ) -> Network:
     """Construct a network from data.
 
@@ -56,6 +49,7 @@ def from_data(
     :param aux_data: Auxiliary data
     :return: The network
     """
+    aux_data = {} if aux_data is None else aux_data
     net = Network(**aux_data)
     net.add_nodes_from(node_data)
     net.add_edges_from(edge_data)
@@ -377,30 +371,10 @@ def pes_network(net: Network, formula: dict | str, aux: bool = False) -> Network
     return edge_subnetwork(net, edge_keys, aux=aux)
 
 
-def pes_networks(
-    net: Network, with_isolates: bool = False, aux: bool = False
-) -> list[Network]:
+def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
     """Determine the PES networks in a larger network.
 
     :param net: A network
-    :param with_isolates: Whether to include isolated species as a "network"
-    :param aux: Pass along auxiliary data?
-    :return: The PES component networks
-    """
-    fmls = automol.form.unique([d[Reaction.formula] for *_, d in edge_data(net)])
-    nets = [pes_network(net, f, aux=aux) for f in fmls]
-    if with_isolates:
-        nets.append(isolates(net))
-    return nets
-
-
-def subpes_networks(
-    net: Network, with_isolates: bool = False, aux: bool = False
-) -> list[Network]:
-    """Determine the PES networks in a larger network.
-
-    :param net: A network
-    :param with_isolates: Whether to include isolated species as a "network"
     :param aux: Pass along auxiliary data?
     :return: The PES component networks
     """
@@ -474,68 +448,23 @@ COLOR_SEQUENCE = [
 ]
 
 
-def species_centered_network(
-    net: Network,
-    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
-) -> Network:
-    """Get a species-centered reaction network (nodes are species).
-
-    :param net: A network
-    :return: A network in which the nodes are individual apecies
-    """
-    excl_fmls = list(map(automol.form.from_string, exclude_formulas))
-
-    def is_excluded(fml):
-        return any(automol.form.match(fml, f) for f in excl_fmls)
-
-    net0 = net
-
-    seen_ids = []
-    node_data = []
-    excl_ks = []
-    excl_spcs = []
-    for ks, rd in node_data(net0):
-        for k, d in zip(ks, rd[Key.species], strict=True):
-            id_ = d[Key.id]
-            fml = d[Species.formula]
-            if id_ not in seen_ids:
-                if is_excluded(fml):
-                    excl_ks.append(k)
-                    excl_spcs.append(d)
-                else:
-                    node_data.append((k, d))
-
-    edge_data = []
-    excl_rxns = []
-    for k1s, k2s, d in edge_data(net0):
-        if any(all(k in excl_ks for k in ks) for ks in (k1s, k2s)):
-            excl_rxns.append(d)
-        for k1, k2 in itertools.product(k1s, k2s):
-            if k1 not in excl_ks and k2 not in excl_ks:
-                edge_data.append((k1, k2, d))
-
-    net = Network(
-        **{Key.excluded_species: excl_spcs, Key.excluded_reactions: excl_rxns}
-    )
-    net.add_nodes_from(node_data)
-    net.add_edges_from(edge_data)
-    return net
-
-
 def display(
     net: Network,
     stereo: bool = True,
-    color_pes: bool = True,
+    color_subpes: bool = True,
+    species_centered: bool = False,
+    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
 ) -> None:
     """Display the mechanism as a network.
 
-    :param net: A network or sequence or networks
+    :param net: A network
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param color_pes: Add distinct colors to the different PESs
-    :param node_exclude_formulas: Formulas for species to be excluded as nodes
+    :param species_centered: Display as a species-centered network?
+    :param exclude_formulas: If species-centered, exclude these species from display
     :param out_name: The name of the HTML file for the network visualization
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
@@ -544,30 +473,23 @@ def display(
         print(f"The network is empty. Skipping visualization...\n{string(net)}")
         return
 
+    out_dir: Path = Path(out_dir)
+    out_dir.mkdir(exist_ok=True)
+
     # Set different edge colors to distinguish components
-    if color_pes:
+    if color_subpes:
         color_cycle = itertools.cycle(COLOR_SEQUENCE)
-        nets = pes_networks(net, with_isolates=True)
+        nets = subpes_networks(net)
         for n in nets:
             networkx.set_edge_attributes(n, next(color_cycle), name=Key.color)
         net = union_all(nets)
 
-    out_dir: Path = Path(out_dir)
-    out_dir.mkdir(exist_ok=True)
-    img_dir = Path("img")
-    (out_dir / img_dir).mkdir(exist_ok=True)
-
-    def _image_file(chi):
-        """Create an SVG molecule drawing and return the path."""
-        gra = automol.amchi.graph(chi, stereo=stereo)
-        svg_str = automol.graph.svg_string(gra, image_size=100)
-
-        chk = automol.amchi.amchi_key(chi)
-        path = img_dir / f"{chk}.svg"
-        with open(out_dir / path, mode="w") as file:
-            file.write(svg_str)
-
-        return str(path)
+    # Convert to species-centered network, if requested
+    net = (
+        _species_centered_network(net, exclude_formulas=exclude_formulas)
+        if species_centered
+        else net
+    )
 
     # Transfer data over to PyVIS
     mech_vis = pyvis.network.Network(
@@ -580,7 +502,8 @@ def display(
             if Species.amchi in d
             else automol.amchi.join([s[Species.amchi] for s in d[Key.species]])
         )
-        mech_vis.add_node(k, shape="image", image=_image_file(chi))
+        image_path = _image_file_from_amchi(chi, out_dir=out_dir, stereo=stereo)
+        mech_vis.add_node(k, shape="image", image=image_path)
 
     for k1, k2, _, d in edge_data(net):
         k1 = k1 if isinstance(k1, str) else "+".join(k1)
@@ -594,3 +517,57 @@ def display(
 
     # Generate the HTML file
     mech_vis.write_html(str(out_dir / out_name), open_browser=open_browser)
+
+
+def _species_centered_network(
+    net: Network,
+    exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
+) -> networkx.MultiGraph:
+    """Get a species-centered reaction network (nodes are species).
+
+    :param net: A network
+    :return: A species-centered network (not usable with the functions above)
+    """
+    excl_fmls = list(map(automol.form.from_string, exclude_formulas))
+
+    def is_excluded(fml):
+        return any(automol.form.match(fml, f) for f in excl_fmls)
+
+    net0 = net
+
+    nodes = []
+    node_data = []
+    for ks, rd in net0.nodes.data():
+        for k, d in zip(ks, rd[Key.species], strict=True):
+            fml = d[Species.formula]
+            if not is_excluded(fml):
+                nodes.append(k)
+                node_data.append((k, d))
+
+    edge_data = []
+    for k1s, k2s, d in net0.edges.data():
+        for k1, k2 in itertools.product(k1s, k2s):
+            if k1 in nodes and k2 in nodes:
+                edge_data.append((k1, k2, d))
+
+    net = Network()
+    net.add_nodes_from(node_data)
+    net.add_edges_from(edge_data)
+    return net
+
+
+def _image_file_from_amchi(chi, out_dir: str | Path, stereo: bool = True):
+    """Create an SVG molecule drawing and return the path."""
+    out_dir = Path(out_dir)
+    img_dir = Path("img")
+    (out_dir / img_dir).mkdir(exist_ok=True)
+
+    gra = automol.amchi.graph(chi, stereo=stereo)
+    svg_str = automol.graph.svg_string(gra, image_size=100)
+
+    chk = automol.amchi.amchi_key(chi)
+    path = img_dir / f"{chk}.svg"
+    with open(out_dir / path, mode="w") as file:
+        file.write(svg_str)
+
+    return str(path)
