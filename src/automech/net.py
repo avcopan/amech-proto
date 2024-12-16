@@ -68,13 +68,21 @@ def copy(net: Network) -> Network:
 
 
 # getters
-def nodes(net: Network) -> list[Node]:
+def nodes(net: Network, species_names: Sequence[str] | None = None) -> list[Node]:
     """Get the list of nodes in the network.
 
     :param net: A network
+    :param species_names: Optionally, return nodes involving these species
     :return: The nodes
     """
-    return list(net.nodes)
+    return (
+        list(net.nodes)
+        if species_names is None
+        else [n for n in net.nodes if any(s in species_names for s in n)]
+    )
+
+
+nodes_ = nodes
 
 
 def edges(net: Network, edges: Sequence[Edge] | None = None) -> list[Edge]:
@@ -83,7 +91,7 @@ def edges(net: Network, edges: Sequence[Edge] | None = None) -> list[Edge]:
     Includes the keys for each edge.
 
     :param net: A network
-    :param es: Optionally, validate a set of keys
+    :param edges: Optionally, return complete edge keys for these edges
     :return: The nodes
     """
 
@@ -99,6 +107,9 @@ def edges(net: Network, edges: Sequence[Edge] | None = None) -> list[Edge]:
         if edges is None
         else list(mit.unique_everseen(itertools.chain(*map(_edges, edges))))
     )
+
+
+edges_ = edges
 
 
 def node_data(net: Network) -> list[NodeDatum]:
@@ -302,15 +313,22 @@ def union(net1: Network, net2: Network) -> Network:
     return union_all([net1, net2])
 
 
-def subnetwork(net: Network, ns: Sequence[Node], aux: bool = False) -> Network:
+def subnetwork(
+    net: Network,
+    nodes: Sequence[Node] = (),
+    species_names: Sequence[str] = (),
+    aux: bool = False,
+) -> Network:
     """Extract a node-induced sub-network from a network.
 
     :param net: A network
-    :param keys: A sequence of node keys
+    :param nodes: A sequence of nodes
+    :param species_names: A sequence of species names
     :param aux: Pass along auxiliary data?
     :return: The network
     """
-    sub_net = networkx.subgraph(net, ns)
+    nodes = [*nodes, *nodes_(net, species_names=species_names)]
+    sub_net = networkx.subgraph(net, nodes)
     return from_data(
         node_data=node_data(sub_net),
         edge_data=edge_data(sub_net),
@@ -318,15 +336,16 @@ def subnetwork(net: Network, ns: Sequence[Node], aux: bool = False) -> Network:
     )
 
 
-def edge_subnetwork(net: Network, es: Sequence[Edge], aux: bool = False) -> Network:
+def edge_subnetwork(net: Network, edges: Sequence[Edge], aux: bool = False) -> Network:
     """Extract a node-induced sub-network from a network.
 
     :param net: A network
-    :param keys: A sequence of edge keys
+    :param edges: A sequence of edges
     :param aux: Pass along auxiliary data?
     :return: The network
     """
-    sub_net = networkx.edge_subgraph(net, edges(net, edges=es))
+    edges = edges_(net, edges=edges)
+    sub_net = networkx.edge_subgraph(net, edges)
     return from_data(
         node_data=node_data(sub_net),
         edge_data=edge_data(sub_net),
@@ -411,6 +430,48 @@ def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
             nets[i] = add_edge(x, edge, source_net=net)
 
     return nets
+
+
+def neighborhood(
+    net: Network, species_names: Sequence[str], radius: int = 1
+) -> Network:
+    """Get the neighborhood of a set of species.
+
+    :param net: A network
+    :param species_names: The names of the species
+    :param radius: Maximum distance of neighbors to include, defaults to 1
+    :param subpes_extend: Extend to include complete sub-PESs?
+    :return: The neighborhood network
+    """
+    net0 = net
+    nodes_ = nodes(net0, species_names=species_names)
+    net = union_all(
+        [networkx.ego_graph(net0, n, radius=radius, undirected=True) for n in nodes_]
+    )
+    return net
+
+
+def extend_subpeses_from_source(net: Network, source_net: Network) -> Network:
+    """Complete the sub-PESs of a network based on another network.
+
+    :param net: A network
+    :param source_net: The network to determine sub-PESs from
+    :return: The first network, with complete sub-PESs
+    """
+    return union_all(
+        [x for x in subpes_networks(source_net) if are_overlapping(net, x)]
+    )
+
+
+# comparisons
+def are_overlapping(net1: Network, net2: Network) -> bool:
+    """Determine whether two networks are overlapping.
+
+    :param net1: A network
+    :param net2: Another network
+    :return: `True` if they are, `False` if they aren't
+    """
+    return bool(set(nodes(net1)) & set(nodes(net2)))
 
 
 # serialization
