@@ -172,5 +172,6 @@ if __name__ == "__main__":
     # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
-    test__network(MECH_NO_REACIONS)
+    # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
+    test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))

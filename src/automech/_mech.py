@@ -8,7 +8,6 @@ from collections.abc import Collection, Sequence
 
 import automol
 import more_itertools as mit
-import networkx
 import polars
 
 from . import data, reac_table, schema
@@ -111,7 +110,7 @@ def from_data(
     return mech
 
 
-def from_network(net: networkx.MultiGraph) -> Mechanism:
+def from_network(net: net_.Network) -> Mechanism:
     """Generate a mechanism from a reaction network.
 
     :param net: A reaction network
@@ -142,6 +141,8 @@ def from_network(net: networkx.MultiGraph) -> Mechanism:
             .unique(net_.Key.id, maintain_order=True)
         )
     )
+    spc_df = spc_df.drop(net_.Key.id, strict=False)
+    rxn_df = rxn_df.drop(net_.Key.id, strict=False)
     return from_data(rxn_inp=rxn_df, spc_inp=spc_df, fail_on_error=False)
 
 
@@ -473,7 +474,7 @@ def network(
     mech: Mechanism,
     species_centered: bool = False,
     exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
-) -> networkx.MultiGraph:
+) -> net_.Network:
     """Generate a network representation of the mechanism.
 
     :param mech: A mechanism
@@ -488,7 +489,7 @@ def network(
     return net
 
 
-def _network(mech: Mechanism) -> networkx.MultiGraph:
+def _network(mech: Mechanism) -> net_.Network:
     """Generate a reaction network representation of the mechanism.
 
     :param mech: A mechanism
@@ -535,10 +536,11 @@ def _network(mech: Mechanism) -> networkx.MultiGraph:
         key2 = tuple(dct.get(Reaction.products))
         return (key1, key2, dct)
 
-    net = networkx.MultiGraph(**{net_.Key.excluded_species: excl_spcs})
-    net.add_nodes_from(map(_node_data_from_dict, rgt_df.to_dicts()))
-    net.add_edges_from(map(_edge_data_from_dict, rxn_df.to_dicts()))
-    return net
+    return net_.from_data(
+        node_data=list(map(_node_data_from_dict, rgt_df.to_dicts())),
+        edge_data=list(map(_edge_data_from_dict, rxn_df.to_dicts())),
+        aux_data={net_.Key.excluded_species: excl_spcs},
+    )
 
 
 # transformations
