@@ -440,7 +440,6 @@ def neighborhood(
     :param net: A network
     :param species_names: The names of the species
     :param radius: Maximum distance of neighbors to include, defaults to 1
-    :param subpes_extend: Extend to include complete sub-PESs?
     :return: The neighborhood network
     """
     net0 = net

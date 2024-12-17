@@ -339,6 +339,15 @@ def reaction_count(mech: Mechanism) -> int:
     return reactions(mech).select(polars.len()).item()
 
 
+def reagents(mech: Mechanism) -> list[list[str]]:
+    """Get the sets of reagents in the mechanism.
+
+    :param mech: A mechanism
+    :return: The sets of reagents
+    """
+    return reac_table.reagents(reactions(mech))
+
+
 def species_names(
     mech: Mechanism,
     rxn_only: bool = False,
@@ -585,31 +594,64 @@ def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
     return set_reactions(mech, polars.concat([rxn_df0, rxn_df], how="diagonal_relaxed"))
 
 
-def neighborhood(
+def pes_filter(
     mech: Mechanism,
-    spc_names: Sequence[str],
-    radius: int = 1,
-    exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
+    include_formulas: Sequence[str] | None = None,
+    exclude_formulas: Sequence[str] | None = None,
 ) -> Mechanism:
-    """Determine the neighborhood of a set of species.
-
-    DEPRECATED: This should use the new reaction network data structure instead and
-    should be an edge-induced subnetwork rather than a node-induced one (like here)
+    """Filter a mechanism by PES formulas.
 
     :param mech: A mechanism
-    :param spc_names: A list of species names
-    :param radius: Maximum distance of neighbors to include
-    :param exclude_formulas: Formula strings of molecules to exclude from the network,
-        using * for wildcard stoichiometry, defaults to ("H*", "OH*", "O2H*", "CH*")
-    :return: The nth neighborhood mechanism
+    :param include_formulas: PES formulas to include, defaults to None
+    :param exclude_formulas: PES formulas to exclude, defaults to None
+    :return: The filtered mechanism
     """
-    mech0 = mech
-    for _ in range(radius):
-        mech = with_species(mech0, spc_names=spc_names, strict=False)
-        spc_names = species_names(
-            mech, rxn_only=True, exclude_formulas=exclude_formulas
-        )
-    return mech
+    rxn_df = reactions(mech)
+
+    if include_formulas is not None:
+        rxn_df = _reactions_pes_filter(rxn_df, include_formulas, include=True)
+
+    if exclude_formulas is not None:
+        rxn_df = _reactions_pes_filter(rxn_df, exclude_formulas, include=False)
+
+    return without_unused_species(set_reactions(mech, rxn_df))
+
+
+def _reactions_pes_filter(
+    rxn_df: polars.DataFrame, fml_strs: Sequence[str], include: bool = False
+) -> polars.DataFrame:
+    """Filter a mechanism by PES formulas."""
+    fmls = list(map(automol.form.from_string, fml_strs))
+
+    def _match(fml: dict[str, int]) -> bool:
+        return any(automol.form.match(fml, f) for f in fmls)
+
+    col_tmp = df_.temp_column()
+    rxn_df = df_.map_(rxn_df, Reaction.formula, col_tmp, _match)
+    match_expr = polars.col(col_tmp)
+    rxn_df = rxn_df.filter(match_expr if include else ~match_expr)
+    rxn_df = rxn_df.drop(col_tmp)
+    return rxn_df
+
+
+def neighborhood(mech: Mechanism, species_names: Sequence[str]) -> Mechanism:
+    """Determine the neighborhood of a set of species.
+
+    :param mech: A mechanism
+    :param species_names: The names of the species
+    :param radius: Maximum distance of neighbors to include, defaults to 1
+    :return: The neighborhood mechanism
+    """
+    col_nei = df_.temp_column()
+
+    rxn_df = reactions(mech)
+    rxn_df = reac_table.with_species_presence_column(
+        rxn_df, col_nei, species_names=species_names
+    )
+
+    rxn_df = rxn_df.filter(col_nei)
+    rxn_df = rxn_df.drop(col_nei)
+    return without_unused_species(set_reactions(mech, rxn_df))
 
 
 def with_species(
