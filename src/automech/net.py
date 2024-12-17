@@ -515,6 +515,7 @@ def display(
     color_subpes: bool = True,
     species_centered: bool = False,
     exclude_formulas: Sequence[str] = DEFAULT_EXCLUDE_FORMULAS,
+    height: str = "750px",
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
@@ -526,6 +527,7 @@ def display(
     :param color_pes: Add distinct colors to the different PESs
     :param species_centered: Display as a species-centered network?
     :param exclude_formulas: If species-centered, exclude these species from display
+    :param height: Control the height of the frame
     :param out_name: The name of the HTML file for the network visualization
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
@@ -554,7 +556,7 @@ def display(
 
     # Transfer data over to PyVIS
     mech_vis = pyvis.network.Network(
-        directed=True, notebook=True, cdn_resources="in_line"
+        height=height, directed=True, notebook=True, cdn_resources="in_line"
     )
     for k, d in node_data(net):
         k = k if isinstance(k, str) else "+".join(k)

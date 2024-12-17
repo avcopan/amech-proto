@@ -1076,6 +1076,7 @@ def display(
     color_subpes: bool = True,
     species_centered: bool = False,
     exclude_formulas: Sequence[str] = net_.DEFAULT_EXCLUDE_FORMULAS,
+    height: str = "750px",
     out_name: str = "net.html",
     out_dir: str = ".automech",
     open_browser: bool = True,
@@ -1087,6 +1088,7 @@ def display(
     :param color_pes: Add distinct colors to the different PESs
     :param species_centered: Display as a species-centered network?
     :param exclude_formulas: If species-centered, exclude these species from display
+    :param height: Control the height of the frame
     :param out_name: The name of the HTML file for the network visualization
     :param out_dir: The name of the directory for saving the network visualization
     :param open_browser: Whether to open the browser automatically
@@ -1097,6 +1099,7 @@ def display(
         color_subpes=color_subpes,
         species_centered=species_centered,
         exclude_formulas=exclude_formulas,
+        height=height,
         out_name=out_name,
         out_dir=out_dir,
         open_browser=open_browser,
