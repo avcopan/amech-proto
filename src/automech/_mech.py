@@ -69,7 +69,7 @@ class Mechanism:
         return f"Mechanism(\n{attrib_str},\n)"
 
     def __iter__(self):
-        """For overloading dict conversion."""
+        """Iterate over the mechanism's dictionary representation."""
         rxn_dct = json.loads(self.reactions.write_json())
         spc_dct = json.loads(self.species.write_json())
         mech_dct = {**self.__dict__, "reactions": rxn_dct, "species": spc_dct}
@@ -86,13 +86,13 @@ def from_data(
     spc_models: Sequence[Model] = (),
     fail_on_error: bool = True,
 ) -> Mechanism:
-    """Contruct a mechanism object from data.
+    """Construct a mechanism object from data.
 
-    :param rxn_inp: A reactions table, as a CSV file path or dataframe
-    :param spc_inp: A species table, as a CSV file path or dataframe
+    :param rxn_inp: A reactions table, as a CSV file path or DataFrame
+    :param spc_inp: A species table, as a CSV file path or DataFrame
     :param rxn_models: Extra reaction models to validate against
     :param spc_models: Extra species models to validate against
-    :param fail_on_error: Whether to raise an exception of there is an inconsistency
+    :param fail_on_error: Whether to raise an exception if there is an inconsistency
     :return: The mechanism object
     """
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
@@ -151,7 +151,7 @@ def from_smiles(
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
 ) -> Mechanism:
-    """Generate a mechanism, using SMILES strings for the species names.
+    """Generate a mechanism using SMILES strings for the species names.
 
     If `name_dct` is `None`, CHEMKIN names will be auto-generated.
 
@@ -203,19 +203,19 @@ def from_smiles(
 
 # getters
 def species(mech: Mechanism) -> polars.DataFrame:
-    """Get the species dataframe for a mechanism.
+    """Get the species DataFrame for a mechanism.
 
     :param mech: The mechanism
-    :return: The mechanism's species dataframe
+    :return: The mechanism's species DataFrame
     """
     return mech.species
 
 
 def reactions(mech: Mechanism) -> polars.DataFrame:
-    """Get the reactions dataframe for a mechanism.
+    """Get the reactions DataFrame for a mechanism.
 
     :param mech: The mechanism
-    :return: The mechanism's reactions dataframe
+    :return: The mechanism's reactions DataFrame
     """
     return mech.reactions
 
@@ -238,12 +238,12 @@ def rate_units(mech: Mechanism) -> tuple[str, str] | None:
     return mech.rate_units
 
 
-# getters
+# setters
 def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
-    """Set the species dataframe for a mechanism.
+    """Set the species DataFrame for a mechanism.
 
     :param mech: The mechanism
-    :param spc_df: The new species dataframe
+    :param spc_df: The new species DataFrame
     :return: The mechanism with updated species
     """
     return from_data(
@@ -255,10 +255,10 @@ def set_species(mech: Mechanism, spc_df: polars.DataFrame) -> Mechanism:
 
 
 def set_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
-    """Set the reactions dataframe for a mechanism.
+    """Set the reactions DataFrame for a mechanism.
 
     :param mech: The mechanism
-    :param rxn_df: The new reactions dataframe
+    :param rxn_df: The new reactions DataFrame
     :return: The mechanism with updated reactions
     """
     return from_data(
@@ -275,8 +275,8 @@ def set_thermo_temperatures(
     """Set the thermo temperatures for a mechanism.
 
     :param mech: The mechanism
-    :param thermo_temps: The new thermo temperatures
-    :return: The thermo temperatures
+    :param temps: The new thermo temperatures
+    :return: The mechanism with updated thermo temperatures
     """
     return from_data(
         rxn_inp=reactions(mech),
@@ -289,12 +289,12 @@ def set_thermo_temperatures(
 def set_rate_units(
     mech: Mechanism, units: tuple[str, str] | None, scale_rates: bool = True
 ) -> Mechanism:
-    """Get the rate units for a mechanism.
+    """Set the rate units for a mechanism.
 
     :param mech: The mechanism
     :param units: The new rate units
     :param scale_rates: Scale the rates if changing units?
-    :return: The rate units
+    :return: The mechanism with updated rate units
     """
     rxn_df = reactions(mech)
     units0 = rate_units(mech)
@@ -342,7 +342,7 @@ def reaction_count(mech: Mechanism) -> int:
 def reagents(mech: Mechanism) -> list[list[str]]:
     """Get the sets of reagents in the mechanism.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :return: The sets of reagents
     """
     return reac_table.reagents(reactions(mech))
@@ -356,7 +356,7 @@ def species_names(
 ) -> list[str]:
     """Get the names of species in the mechanism.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :param rxn_only: Only include species that are involved in reactions?
     :param formulas: Formula strings of species to include, using * for wildcard
         stoichiometry
@@ -401,7 +401,7 @@ def species_names(
 def reaction_reactants(mech: Mechanism) -> list[list[str]]:
     """Get the reactants of reactions in the mechanism.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :return: The reaction reactants
     """
     rxn_df = reactions(mech)
@@ -411,7 +411,7 @@ def reaction_reactants(mech: Mechanism) -> list[list[str]]:
 def reaction_products(mech: Mechanism) -> list[list[str]]:
     """Get the products of reactions in the mechanism.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :return: The reaction products
     """
     rxn_df = reactions(mech)
@@ -421,10 +421,10 @@ def reaction_products(mech: Mechanism) -> list[list[str]]:
 def reaction_reactants_and_products(
     mech: Mechanism,
 ) -> list[tuple[list[str], list[str]]]:
-    """Get the products of reactions in the mechanism.
+    """Get the reactants and products of reactions in the mechanism.
 
-    :param mech: A mechanism
-    :return: The reaction products
+    :param mech: The mechanism
+    :return: The reaction reactants and products
     """
     rxn_df = reactions(mech)
     return rxn_df[[Reaction.reactants, Reaction.products]].rows()
@@ -433,7 +433,7 @@ def reaction_reactants_and_products(
 def reaction_equations(mech: Mechanism) -> list[str]:
     """Get the equations of reactions in the mechanism.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :return: The reaction equations
     """
     rps = reaction_reactants_and_products(mech)
@@ -443,8 +443,8 @@ def reaction_equations(mech: Mechanism) -> list[str]:
 def reaction_species_names(mech: Mechanism) -> list[str]:
     """Get the names of all species that participate in reactions.
 
-    :param mech: A mechanism
-    :return: The reaction species
+    :param mech: The mechanism
+    :return: The reaction species names
     """
     eqs = reaction_equations(mech)
     rxn_names = [r + p for r, p, *_ in map(data.reac.read_chemkin_equation, eqs)]
@@ -480,8 +480,7 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
 def network(mech: Mechanism) -> net_.Network:
     """Generate a reaction network representation of the mechanism.
 
-    :param mech: A mechanism
-    :param node_exclude_formulas: Formulas for species to be excluded as nodes
+    :param mech: The mechanism
     :return: The reaction network
     """
     spc_df = species(mech)
@@ -543,10 +542,10 @@ def rename(
 ) -> Mechanism:
     """Rename the species in a mechanism.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :param name_dct: A dictionary mapping current species names to new species names
-    :param drop_missing: Drop missing species from the mechanism?
-        Otherwise, they are retained with their original names
+    :param drop_missing: Drop missing species from the mechanism? Otherwise, they are
+        retained with their original names
     :return: The mechanism with updated species names
     """
     if drop_missing:
@@ -577,8 +576,8 @@ def rename(
 def remove_all_reactions(mech: Mechanism) -> Mechanism:
     """Clear the reactions from a mechanism.
 
-    :param mech: A mechanism
-    :return: The mechanism, without reactions
+    :param mech: The mechanism
+    :return: The mechanism without reactions
     """
     return set_reactions(mech, reactions(mech).clear())
 
@@ -586,9 +585,9 @@ def remove_all_reactions(mech: Mechanism) -> Mechanism:
 def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
     """Add reactions from a DataFrame to a mechanism.
 
-    :param mech: A mechanism
-    :param rxn_df: A reactions dataframe
-    :return: The mechanism, with added reactions
+    :param mech: The mechanism
+    :param rxn_df: A reactions DataFrame
+    :return: The mechanism with added reactions
     """
     rxn_df0 = reactions(mech)
     return set_reactions(mech, polars.concat([rxn_df0, rxn_df], how="diagonal_relaxed"))
@@ -601,7 +600,7 @@ def pes_filter(
 ) -> Mechanism:
     """Filter a mechanism by PES formulas.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :param include_formulas: PES formulas to include, defaults to None
     :param exclude_formulas: PES formulas to exclude, defaults to None
     :return: The filtered mechanism
@@ -637,9 +636,8 @@ def _reactions_pes_filter(
 def neighborhood(mech: Mechanism, species_names: Sequence[str]) -> Mechanism:
     """Determine the neighborhood of a set of species.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :param species_names: The names of the species
-    :param radius: Maximum distance of neighbors to include, defaults to 1
     :return: The neighborhood mechanism
     """
     col_nei = df_.temp_column()
@@ -673,7 +671,7 @@ def without_species(mech: Mechanism, spc_names: Sequence[str] = ()) -> Mechanism
     """Extract a submechanism excluding species names from a list.
 
     :param mech: The mechanism
-    :param spc_names: The names of the species to be included
+    :param spc_names: The names of the species to be excluded
     :return: The submechanism
     """
     return _with_or_without_species(mech=mech, spc_names=spc_names, without=True)
@@ -719,7 +717,7 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
     """Remove unused species from a mechanism.
 
     :param mech: The mechanism
-    :return: The mechanism, without unused species
+    :return: The mechanism without unused species
     """
     spc_df = species(mech)
     used_names = species_names(mech, rxn_only=True)
@@ -730,8 +728,8 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
 def without_duplicate_reactions(mech: Mechanism) -> Mechanism:
     """Remove duplicate reactions from a mechanism.
 
-    :param mech: A mechanism
-    :return: The mechanism, without duplicate reactions
+    :param mech: The mechanism
+    :return: The mechanism without duplicate reactions
     """
     col_tmp = df_.temp_column()
     rxn_df = reactions(mech)
@@ -751,7 +749,6 @@ def expand_stereo(
     :param mech: The mechanism
     :param enant: Distinguish between enantiomers?, defaults to True
     :param strained: Include strained stereoisomers?
-    :param drop_unused: Drop unused species from the mechanism?
     :return: A mechanism with the classified reactions, and one with the unclassified
     """
     # Read in the mechanism data
@@ -851,7 +848,7 @@ def _expand_species_stereo(
 ) -> polars.DataFrame:
     """Stereoexpand the species from a mechanism.
 
-    :param spc_df: A species table, as a dataframe
+    :param spc_df: A species table, as a DataFrame
     :param enant: Distinguish between enantiomers?
     :param strained: Include strained stereoisomers?
     :return: The stereoexpanded species table
@@ -981,7 +978,7 @@ def drop_parent_reactions(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mecha
 
     :param par_mech: A parent mechanism
     :param exp_sub_mech: A stereo-expanded sub-mechanism
-    :return: The parent mechanism, with updated rates
+    :return: The parent mechanism with updated rates
     """
     par_rxn_df = reactions(par_mech)
     sub_rxn_df = reactions(without_unused_species(exp_sub_mech))
@@ -1022,12 +1019,12 @@ def update_parent_species_data(
 ) -> Mechanism:
     """Update the species data in a parent mechanism from a submechanism.
 
-    Note: A pseudo-stereoexpansion will be applied to any to the parent mechanism for
-    any species it shares with the sub-mechanism.
+    Note: A pseudo-stereoexpansion will be applied to the parent mechanism for any
+    species it shares with the sub-mechanism.
 
     :param par_mech: A parent mechanism
     :param exp_sub_mech: A stereo-expanded sub-mechanism
-    :return: The parent mechanism, with updated thermochemistry
+    :return: The parent mechanism with updated thermochemistry
     """
     exp_par_mech = expand_parent_stereo(par_mech, exp_sub_mech)
 
@@ -1055,12 +1052,12 @@ def update_parent_reaction_data(
 ) -> Mechanism:
     """Update the reaction data in a parent mechanism from a submechanism.
 
-    Note: A pseudo-stereoexpansion will be applied to any to the parent mechanism for
-    any species it shares with the sub-mechanism.
+    Note: A pseudo-stereoexpansion will be applied to the parent mechanism for any
+    species it shares with the sub-mechanism.
 
     :param par_mech: A parent mechanism
     :param exp_sub_mech: A stereo-expanded sub-mechanism
-    :return: The parent mechanism, with updated thermochemistry
+    :return: The parent mechanism with updated thermochemistry
     """
     exp_par_mech = expand_parent_stereo(par_mech, exp_sub_mech)
     rem_par_mech = drop_parent_reactions(exp_par_mech, exp_sub_mech)
@@ -1070,9 +1067,29 @@ def update_parent_reaction_data(
     return set_reactions(rem_par_mech, par_rxn_df)
 
 
+# building
+def enumerate_reactions_from_smarts(
+    mech: Mechanism,
+    smarts: str,
+    reactants: dict[int, str] | None = None,
+    products: dict[int, str] | None = None,
+) -> Mechanism:
+    """Enumerate reactions for a mechanism based on a SMARTS reaction template.
+
+    :param mech: The mechanism
+    :param smarts: SMARTS reaction template
+    :param reactants: Dictionary mapping reactant template indices to specific species;
+        if unspecified, all species will be checked
+    :param products: Dictionary mapping product template indices to specific species; if
+        unspecified, all species will be checked
+    :return: The mechanism with the enumerated reactions
+    """
+    pass
+
+
 # comparison
 def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
-    """Determine whether two mechanisms are equal.
+    """Determine whether two mechanisms are equivalent.
 
     (Currently too strict -- need to figure out how to handle nested float comparisons
     in Struct columns.)
@@ -1095,7 +1112,7 @@ def are_equivalent(mech1: Mechanism, mech2: Mechanism) -> bool:
 def string(mech: Mechanism) -> str:
     """Write a mechanism to a JSON string.
 
-    :param mech: A mechanism
+    :param mech: The mechanism
     :return: The Mechanism JSON string
     """
     return json.dumps(dict(mech))
@@ -1127,7 +1144,7 @@ def display(
 
     :param mech: The mechanism
     :param stereo: Include stereochemistry in species drawings?, defaults to True
-    :param color_pes: Add distinct colors to the different PESs
+    :param color_subpes: Add distinct colors to the different PESs
     :param species_centered: Display as a species-centered network?
     :param exclude_formulas: If species-centered, exclude these species from display
     :param height: Control the height of the frame
@@ -1162,7 +1179,7 @@ def display_species(
 
     :param mech: The mechanism
     :param sel_vals: Select species by column value, defaults to None
-    :param sel_key: The column to use for selection, defaults to Species.smiles
+    :param sel_key: The column to use for selection, defaults to Species.name
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param keys: Keys of extra columns to print
     """

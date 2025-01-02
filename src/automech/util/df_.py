@@ -21,18 +21,19 @@ def with_index(df: polars.DataFrame, name: str = "index") -> polars.DataFrame:
 
 
 def temp_column(length: int = 24) -> str:
-    """Generate a unique temporary column name for a dataframe.
+    """Generate a unique temporary column name for a DataFrame.
 
+    :param length: The length of the temporary column name, defaults to 24
     :return: The column name
     """
     return "".join(random.choice(string.ascii_letters) for _ in range(length))
 
 
 def from_csv(path: str) -> polars.DataFrame:
-    """Read a dataframe from a CSV file.
+    """Read a DataFrame from a CSV file.
 
     :param path: The path to the CSV file
-    :return: The dataframe
+    :return: The DataFrame
     """
     try:
         df = polars.read_csv(path)
@@ -44,11 +45,11 @@ def from_csv(path: str) -> polars.DataFrame:
 def to_csv(
     df: polars.DataFrame, path: str | None, quote_char: str | None = None
 ) -> None:
-    """Write a dataframe to a CSV file.
+    """Write a DataFrame to a CSV file.
 
-    If `path` is `None`, this function does nothing
+    If `path` is `None`, this function does nothing.
 
-    :param df: The dataframe
+    :param df: The DataFrame
     :param path: The path to the CSV file
     :param quote_char: Optionally, override the default quote character
     """
@@ -71,17 +72,17 @@ def map_(
     dtype_: polars.DataType | Sequence[polars.DataType] | None = None,
     bar: bool = True,
 ) -> polars.DataFrame:
-    """Map columns from a dataframe onto a new column.
+    """Map columns from a DataFrame onto a new column.
 
-    :param df: The dataframe
+    :param df: The DataFrame
     :param in_: The input key or keys
     :param out_: The output key or keys; if `None`, the function output will be ignored
     :param func_: The mapping function
-    :param dct: A lookup dictionary; If the arguments are a key in this dictionary, its
+    :param dct: A lookup dictionary; if the arguments are a key in this dictionary, its
         value will be returned in place of the function value
     :param dtype_: The data type of the output
     :param bar: Include a progress bar?
-    :return: The resulting dataframe
+    :return: The resulting DataFrame
     """
     dct = {} if dct is None else dct
     in_ = (in_,) if isinstance(in_, str) else tuple(in_)
@@ -122,13 +123,13 @@ def map_(
 def lookup_dict(
     df: polars.DataFrame, in_: Key_ | None = None, out_: Key_ | None = None
 ) -> dict[Value_, Value_]:
-    """Form a lookup dictionary mapping one column onto another in a dataframe.
+    """Form a lookup dictionary mapping one column onto another in a DataFrame.
 
-    Allows mappings between sets of columns, using a tuple of column keys
+    Allows mappings between sets of columns, using a tuple of column keys.
 
-    :param df: The dataframe
-    :param in_: The input key or keys; if `None` the index is used
-    :param out_: The output key or keys; if `None` the index is used
+    :param df: The DataFrame
+    :param in_: The input key or keys; if `None`, the index is used
+    :param out_: The output key or keys; if `None`, the index is used
     :return: The dictionary mapping input values to output values
     """
     cols = df.columns

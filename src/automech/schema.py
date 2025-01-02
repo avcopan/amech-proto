@@ -119,7 +119,8 @@ def types(
     """Get a dictionary mapping column names to type names.
 
     :param models: The models to get the schema for
-    :return: The schema, as a mapping of column names onto types
+    :param keys: Optionally, specify keys to include in the schema
+    :return: The schema, as a mapping of column names to types
     """
     keys = None if keys is None else list(keys)
 
@@ -136,14 +137,16 @@ def types(
 def species_types(keys: Sequence[str] | None = None) -> dict[str, type]:
     """Get a dictionary mapping column names to types for species tables.
 
-    :return: The schema, as a mapping of column names onto types
+    :param keys: Optionally, specify keys to include in the schema
+    :return: The schema, as a mapping of column names to types
     """
     return types(SPECIES_MODELS, keys)
 
 
 def reaction_types(keys: Sequence[str] | None = None) -> dict[str, type]:
-    """Get a dictionary mapping column names to types for species tables.
+    """Get a dictionary mapping column names to types for reaction tables.
 
+    :param keys: Optionally, specify keys to include in the schema
     :return: The schema, as a mapping of column names onto types
     """
     return types(REACTION_MODELS, keys)
@@ -157,14 +160,15 @@ def species_table(
     charge_dct: dict[str, int] | None = None,
     keep_extra: bool = True,
 ) -> polars.DataFrame:
-    """Validate a species data frame.
+    """Validate a species DataFrame.
 
-    :param df: The dataframe
+    :param df: The DataFrame
     :param models: Extra species models to validate against
     :param name_dct: If generating names, specify some names by ChI
     :param spin_dct: If generating spins, specify some spins by ChI
     :param charge_dct: If generating charges, specify some charges by ChI
-    :return: The validated dataframe
+    :param keep_extra: Keep extra columns that aren't in the models?
+    :return: The validated DataFrame
     """
     if Species not in models:
         models = (Species, *models)
@@ -252,13 +256,14 @@ def reaction_table(
     keep_extra: bool = True,
     fail_on_error: bool = True,
 ) -> tuple[polars.DataFrame, Errors]:
-    """Validate a reactions data frame.
+    """Validate a reactions DataFrame.
 
-    :param df: The dataframe
+    :param df: The DataFrame
     :param models: Extra reaction models to validate against
-    :param spc_df: Optionally, pass in a species dataframe for determining formulas
-    :param strict: Whether or not to raise an Exception if there is an error
-    :return: The validated dataframe, along with any errors
+    :param spc_df: Optionally, pass in a species DataFrame for determining formulas
+    :param keep_extra: Keep extra columns that aren't in the models?
+    :param fail_on_error: Whether or not to raise an Exception if there is an error
+    :return: The validated DataFrame, along with any errors
     """
     if Reaction not in models:
         models = (Reaction, *models)
@@ -291,7 +296,7 @@ def reaction_table_with_sorted_reagents(df: polars.DataFrame) -> polars.DataFram
     """Sort the reagents columns in the reaction table.
 
     :param df: A reactions table
-    :return: The reactions table
+    :return: The reactions table with sorted reagents
     """
     df = df.with_columns(polars.col(Reaction.reactants).list.sort())
     df = df.with_columns(polars.col(Reaction.products).list.sort())
@@ -303,11 +308,11 @@ def reaction_table_with_missing_species_check(
 ) -> polars.DataFrame:
     """Add a column to the reaction table that identifies missing species.
 
-    (Only does anything if species dataframe is provided.)
+    (Only does anything if a species DataFrame is provided.)
 
-    :param df: A reactions dataframe
-    :param spc_df: A species dataframe
-    :return: The reactions table
+    :param df: A reactions DataFrame
+    :param spc_df: A species DataFrame
+    :return: The reactions table with the missing species check column
     """
     if spc_df is None:
         return df.with_columns(
@@ -329,12 +334,12 @@ def reaction_table_with_formula(
 ) -> polars.DataFrame:
     """Determine reaction formulas from their reagents (reactants or products).
 
-    (Only does anything if species dataframe is provided.)
+    (Only does anything if a species DataFrame is provided.)
 
-    :param df: A reactions dataframe
-    :param spc_df: A species dataframe
+    :param df: A reactions DataFrame
+    :param spc_df: A species DataFrame
     :param check: Check that the reactant and product formulas are balanced
-    :return: The reaction dataframe, with the new formula column
+    :return: The reaction DataFrame with the new formula column
     """
     df = _reaction_table_with_formula(df, spc_df=spc_df)
     if check and spc_df is not None:
@@ -361,15 +366,15 @@ def _reaction_table_with_formula(
 ) -> polars.DataFrame:
     """Determine reaction formulas from their reagents (reactants or products).
 
-    The species dataframe must be provided for formulas to be determined.  Otherwise,
+    The species DataFrame must be provided for formulas to be determined. Otherwise,
     the formula column will be initialized with empty values.
 
-    :param df: The dataframe
-    :param spc_df: Optionally, pass in a species dataframe for determining formulas
+    :param df: The DataFrame
+    :param spc_df: Optionally, pass in a species DataFrame for determining formulas
     :param col_in: A column with lists of species names (reactants or products), used to
         determine the overall formula
     :param col_out: The name of the new formula column
-    :return: The reaction dataframe, with the new formula column
+    :return: The reaction DataFrame with the new formula column
     """
     # If the column already exists and we haven't passed in a species dataframe, make
     # sure we don't wipe it out
@@ -399,10 +404,10 @@ def table_with_columns_from_models(
 ) -> polars.DataFrame:
     """Return a table with columns selected from models.
 
-    :param df: The dataframe
+    :param df: The DataFrame
     :param models: The models, defaults to ()
-    :param drop_extra: Keep extra columns that aren't in the models?
-    :return: The dataframe selection
+    :param keep_extra: Keep extra columns that aren't in the models?
+    :return: The DataFrame selection
     """
     cols = list(itertools.chain(*(model.to_schema().columns for model in models)))
     if keep_extra:

@@ -1,4 +1,4 @@
-"""Functions acting on reactions dataframes."""
+"""Functions acting on reactions DataFrames."""
 
 from collections.abc import Mapping, Sequence
 
@@ -16,7 +16,7 @@ DEFAULT_REAGENT_SEPARATOR = " + "
 def reagents(rxn_df: polars.DataFrame) -> list[list[str]]:
     """Get reagents as lists.
 
-    :param rxn_df: A reactions dataframe
+    :param rxn_df: A reactions DataFrame
     :return: The reagents
     """
     rcts = rxn_df[Reaction.reactants].to_list()
@@ -29,9 +29,9 @@ def reagent_strings(
 ) -> list[str]:
     """Get reagents as strings.
 
-    :param rxn_df: A reactions dataframe
+    :param rxn_df: A reactions DataFrame
     :param separator: The separator for joining reagent strings
-    :return: The reagents
+    :return: The reagents as strings
     """
     return [separator.join(r) for r in reagents(rxn_df)]
 
@@ -42,10 +42,10 @@ def with_species_presence_column(
 ) -> polars.DataFrame:
     """Add a column indicating the presence of one or more species.
 
-    :param rxn_df: A reactions dataframe
+    :param rxn_df: A reactions DataFrame
     :param species_names: Species names
     :param col_name: The column name
-    :return: The modified reactions dataframe
+    :return: The modified reactions DataFrame
     """
     return rxn_df.with_columns(
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -62,10 +62,10 @@ def with_reagent_strings_column(
 
     e.g. ["C2H6 + OH", "C2H5 + H2O"]
 
-    :param rxn_df: A reactions dataframe
+    :param rxn_df: A reactions DataFrame
     :param col_name: The column name
     :param separator: The separator for joining reagent strings
-    :return: The reactions dataframe, with this extra column
+    :return: The reactions DataFrame with this extra column
     """
     return rxn_df.with_columns(
         polars.concat_list(
@@ -80,7 +80,7 @@ def with_reaction_key(
     col_name: str = "key",
     spc_key_dct: dict[str, object] | None = None,
 ) -> polars.DataFrame:
-    """Add a key for identifying unique reactions to this dataframe.
+    """Add a key for identifying unique reactions to this DataFrame.
 
     The key is formed by sorting reactants and products and then sorting the direction
     of the reaction.
@@ -90,10 +90,10 @@ def with_reaction_key(
     By default, this uses the species names, but a dictionary can be passed in to
     translate these into other species identifiers.
 
-    :param rxn_df: A reactions dataframe
+    :param rxn_df: A reactions DataFrame
     :param col_name: The column name
     :param spc_key_dct: A dictionary mapping species names onto unique species keys
-    :return: A reactions dataframe with this key as a new column
+    :return: A reactions DataFrame with this key as a new column
     """
 
     def _key(rcts, prds):
@@ -113,15 +113,15 @@ def translate_reagents(
     rcol_out: str = Reaction.reactants,
     pcol_out: str = Reaction.products,
 ) -> polars.DataFrame:
-    """Translate the reagent names in a reactions dataframe.
+    """Translate the reagent names in a reactions DataFrame.
 
-    :param rxn_df: A reactions dataframe
+    :param rxn_df: A reactions DataFrame
     :param trans: A translation mapping or a sequence of values to replace
     :param trans_into: If `trans` is a sequence, a sequence of values to replace by,
         defaults to None
     :param rcol_out: The column name to use for the reactants
     :param pcol_out: The column name to use for the products
-    :return: The updated reactions dataframe
+    :return: The updated reactions DataFrame
     """
 
     def _translate(col_in: str, col_out: str) -> polars.Expr:

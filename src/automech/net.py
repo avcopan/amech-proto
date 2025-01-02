@@ -92,7 +92,7 @@ def edges(net: Network, edges: Sequence[Edge] | None = None) -> list[Edge]:
 
     :param net: A network
     :param edges: Optionally, return complete edge keys for these edges
-    :return: The nodes
+    :return: The edges
     """
 
     def _edges(edge: Edge) -> list[Edge]:
@@ -141,7 +141,7 @@ def auxiliary_data(net: Network) -> dict[str, object]:
 
 # setters
 def set_nodes(net: Network, node_data: list[Node | NodeDatum]) -> Network:
-    """Get the list of nodes in the network.
+    """Set the list of nodes in the network.
 
     :param net: A network
     :param node_data: Node data
@@ -153,7 +153,7 @@ def set_nodes(net: Network, node_data: list[Node | NodeDatum]) -> Network:
 
 
 def set_edges(net: Network, edge_data: list[Edge | EdgeDatum]) -> Network:
-    """Get the list of edges in the network.
+    """Set the list of edges in the network.
 
     :param net: A network
     :param edge_data: Edge data
@@ -165,7 +165,7 @@ def set_edges(net: Network, edge_data: list[Edge | EdgeDatum]) -> Network:
 
 
 def set_auxiliary_data(net: Network, aux_data: dict[str, object]) -> Network:
-    """Get additional data associated with a network.
+    """Set additional data associated with a network.
 
     :param net: A network
     :param aux_data: Auxiliary data
@@ -325,7 +325,7 @@ def subnetwork(
     :param nodes: A sequence of nodes
     :param species_names: A sequence of species names
     :param aux: Pass along auxiliary data?
-    :return: The network
+    :return: The sub-network
     """
     nodes = [*nodes, *nodes_(net, species_names=species_names)]
     sub_net = networkx.subgraph(net, nodes)
@@ -337,12 +337,12 @@ def subnetwork(
 
 
 def edge_subnetwork(net: Network, edges: Sequence[Edge], aux: bool = False) -> Network:
-    """Extract a node-induced sub-network from a network.
+    """Extract an edge-induced sub-network from a network.
 
     :param net: A network
     :param edges: A sequence of edges
     :param aux: Pass along auxiliary data?
-    :return: The network
+    :return: The sub-network
     """
     edges = edges_(net, edges=edges)
     sub_net = networkx.edge_subgraph(net, edges)
@@ -475,10 +475,10 @@ def are_overlapping(net1: Network, net2: Network) -> bool:
 
 # serialization
 def dict_(net: Network) -> Data:
-    """Serialize a network as a string.
+    """Serialize a network as a dictionary.
 
     :param net: A network
-    :return: The string serialization
+    :return: The dictionary serialization
     """
     return networkx.adjacency_data(net)
 
@@ -523,7 +523,7 @@ def display(
 
     :param net: A network
     :param stereo: Include stereochemistry in species drawings?, defaults to True
-    :param color_pes: Add distinct colors to the different PESs
+    :param color_subpes: Add distinct colors to the different PESs
     :param species_centered: Display as a species-centered network?
     :param exclude_formulas: If species-centered, exclude these species from display
     :param height: Control the height of the frame
