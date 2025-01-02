@@ -87,7 +87,7 @@ def test__network(mech0):
 def test__display(mech, smis, eqs):
     """Test automech.display."""
     automech.display(mech, open_browser=False)
-    automech.display_species(mech, sel_vals=smis, sel_key=Species.smiles)
+    automech.display_species(mech, species=smis, species_id=Species.smiles)
     automech.display_reactions(mech, eqs=eqs)
 
 

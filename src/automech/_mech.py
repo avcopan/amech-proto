@@ -10,7 +10,7 @@ import automol
 import more_itertools as mit
 import polars
 
-from . import data, reac_table, schema
+from . import data, reac_table, schema, spec_table
 from . import net as net_
 from .schema import (
     Model,
@@ -211,6 +211,9 @@ def species(mech: Mechanism) -> polars.DataFrame:
     return mech.species
 
 
+species_ = species
+
+
 def reactions(mech: Mechanism) -> polars.DataFrame:
     """Get the reactions DataFrame for a mechanism.
 
@@ -218,6 +221,9 @@ def reactions(mech: Mechanism) -> polars.DataFrame:
     :return: The mechanism's reactions DataFrame
     """
     return mech.reactions
+
+
+reactions_ = reactions
 
 
 def thermo_temperatures(mech: Mechanism) -> tuple[float, float, float] | None:
@@ -1084,7 +1090,8 @@ def enumerate_reactions_from_smarts(
         unspecified, all species will be checked
     :return: The mechanism with the enumerated reactions
     """
-    pass
+    print(mech)
+    print(smarts)
 
 
 # comparison
@@ -1167,8 +1174,8 @@ def display(
 
 def display_species(
     mech: Mechanism,
-    sel_vals: Sequence[str] | None = None,
-    sel_key: str = Species.name,
+    species: Sequence[str] | None = None,
+    species_id: str | Sequence[str] = Species.name,
     stereo: bool = True,
     keys: tuple[str, ...] = (
         Species.name,
@@ -1178,20 +1185,18 @@ def display_species(
     """Display the species in a mechanism.
 
     :param mech: The mechanism
-    :param sel_vals: Select species by column value, defaults to None
-    :param sel_key: The column to use for selection, defaults to Species.name
+    :param species: Species identifiers
+    :param species_id: One or more columns for identifying species
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param keys: Keys of extra columns to print
     """
     # Read in the mechanism data
-    spc_df: polars.DataFrame = species(mech)
+    spc_df: polars.DataFrame = species_(mech)
 
-    if sel_vals is not None:
-        if sel_key == Species.smiles:
-            sel_vals = list(map(automol.smiles.amchi, sel_vals))
-            sel_key = Species.amchi
-        spc_df = spc_df.filter(polars.col(sel_key).is_in(sel_vals))
-        keys = (sel_key, *keys) if sel_key not in keys else keys
+    if species is not None:
+        spc_df = spec_table.by_id(spc_df, species, species_id)
+        id_ = [species_id] if isinstance(species_id, str) else species_id
+        keys = [*id_, *(k for k in keys if k not in id_)]
 
     def _display_species(chi, *vals):
         """Display a species."""
