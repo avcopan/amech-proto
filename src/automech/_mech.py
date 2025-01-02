@@ -333,7 +333,7 @@ def species_count(mech: Mechanism) -> int:
     :param mech: The mechanism
     :return: The number of species
     """
-    return species(mech).select(polars.len()).item()
+    return df_.count(species(mech))
 
 
 def reaction_count(mech: Mechanism) -> int:
@@ -342,7 +342,7 @@ def reaction_count(mech: Mechanism) -> int:
     :param mech: The mechanism
     :return: The number of reactions
     """
-    return reactions(mech).select(polars.len()).item()
+    return df_.count(reactions(mech))
 
 
 def reagents(mech: Mechanism) -> list[list[str]]:
@@ -1079,6 +1079,7 @@ def enumerate_reactions_from_smarts(
     smarts: str,
     reactants: dict[int, str] | None = None,
     products: dict[int, str] | None = None,
+    spc_key_: str | Sequence[str] = Species.name,
 ) -> Mechanism:
     """Enumerate reactions for a mechanism based on a SMARTS reaction template.
 
@@ -1088,10 +1089,23 @@ def enumerate_reactions_from_smarts(
         if unspecified, all species will be checked
     :param products: Dictionary mapping product template indices to specific species; if
         unspecified, all species will be checked
+    :param key_: Species column key(s) for identifying reactants and products
     :return: The mechanism with the enumerated reactions
     """
-    print(mech)
-    print(smarts)
+    reactants = {} if reactants is None else reactants
+    products = {} if products is None else products
+
+    spc_df = species_(mech)
+    reactants = {
+        k: spec_table.rows(spc_df, v, key_=spc_key_, try_fill=True)
+        for k, v in reactants.items()
+    }
+    products = {
+        k: spec_table.rows(spc_df, v, key_=spc_key_, try_fill=True)
+        for k, v in products.items()
+    }
+    print(reactants)
+    print(products)
 
 
 # comparison
@@ -1174,8 +1188,8 @@ def display(
 
 def display_species(
     mech: Mechanism,
-    species: Sequence[str] | None = None,
-    species_id: str | Sequence[str] = Species.name,
+    spc_vals_: Sequence[str] | None = None,
+    spc_key_: str | Sequence[str] = Species.name,
     stereo: bool = True,
     keys: tuple[str, ...] = (
         Species.name,
@@ -1185,17 +1199,17 @@ def display_species(
     """Display the species in a mechanism.
 
     :param mech: The mechanism
-    :param species: Species identifiers
-    :param species_id: One or more columns for identifying species
+    :param vals_: Species column value(s) list for selection
+    :param key_: Species column key(s) for selection
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param keys: Keys of extra columns to print
     """
     # Read in the mechanism data
     spc_df: polars.DataFrame = species_(mech)
 
-    if species is not None:
-        spc_df = spec_table.by_id(spc_df, species, species_id)
-        id_ = [species_id] if isinstance(species_id, str) else species_id
+    if spc_vals_ is not None:
+        spc_df = spec_table.filter(spc_df, vals_=spc_vals_, key_=spc_key_)
+        id_ = [spc_key_] if isinstance(spc_key_, str) else spc_key_
         keys = [*id_, *(k for k in keys if k not in id_)]
 
     def _display_species(chi, *vals):

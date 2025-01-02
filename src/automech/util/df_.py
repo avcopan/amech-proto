@@ -16,6 +16,15 @@ Values = Sequence[object]
 Value_ = Value | Values
 
 
+def count(df: polars.DataFrame) -> int:
+    """Count the number of rows in a DataFrame.
+
+    :param df: The DataFrame
+    :return: The number of rows
+    """
+    return df.select(polars.len()).item()
+
+
 def with_index(df: polars.DataFrame, name: str = "index") -> polars.DataFrame:
     return df.with_row_index(name=name)
 

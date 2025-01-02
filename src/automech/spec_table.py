@@ -5,63 +5,100 @@ from collections.abc import Sequence
 import automol
 import polars
 
+from . import schema
 from .schema import Species
 from .util import df_
 
 
 # selections
-def by_id(
+def rows(
     spc_df: polars.DataFrame,
-    species: Sequence[str] | None = None,
-    species_id: str | Sequence[str] = Species.name,
-) -> polars.DataFrame:
-    """Add a column indicating a match against one or more species.
+    vals_: object | Sequence[object],
+    key_: str | Sequence[str] = Species.name,
+    try_fill: bool = False,
+    fail_if_multiple: bool = True,
+) -> list[dict[str, object]]:
+    """Select a row that matches a species.
 
     :param spc_df: A species DataFrame
-    :param col_name: The column name
-    :param species: Species identifiers
-    :param species_id: One or more columns for identifying species
+    :param vals_: Column value(s) list
+    :param key_: Column key(s)
+    :param try_fill: Whether attempt to fill missing values
+    :param fail_if_multiple: Whether to fail if multiple matches are found
     :return: The modified species DataFrame
     """
-    col_match = df_.temp_column()
-    spc_df = with_species_match_column(
-        spc_df, col_match, species=species, species_id=species_id
-    )
-    spc_df = spc_df.filter(col_match)
-    return spc_df.drop(col_match)
+    return [
+        row(spc_df, v, key_, try_fill=try_fill, fail_if_multiple=fail_if_multiple)
+        for v in vals_
+    ]
 
 
-# transformations
-def with_species_match_column(
+def row(
     spc_df: polars.DataFrame,
-    col_name: str,
-    species: Sequence[str] | None = None,
-    species_id: str | Sequence[str] = Species.name,
-) -> polars.DataFrame:
-    """Add a column indicating a match against one or more species.
+    val_: object | Sequence[object],
+    key_: str | Sequence[str] = Species.name,
+    try_fill: bool = False,
+    fail_if_multiple: bool = True,
+) -> dict[str, object]:
+    """Select a row that matches a species.
 
     :param spc_df: A species DataFrame
-    :param col_name: The column name
-    :param species: Species identifiers
-    :param species_id: One or more columns for identifying species
+    :param val_: Column value(s)
+    :param key_: Column key(s)
+    :param try_fill: Whether attempt to fill missing values
+    :param fail_if_multiple: Whether to fail if multiple matches are found
     :return: The modified species DataFrame
     """
-    if species is None:
-        return spc_df.with_columns(polars.lit(True).alias(col_name))
+    match_df = filter(spc_df, [val_], key_)
+    count = df_.count(match_df)
 
-    if isinstance(species_id, str):
-        species_id = [species_id]
-        species = [[s] for s in species]
+    if fail_if_multiple and count > 1:
+        raise ValueError(f"Multiple species match the criteria: {val_}")
 
-    match_data = dict(zip(species_id, zip(*species, strict=True), strict=True))
-
-    # Replace SMILES with AMChI if given
-    if Species.smiles in match_data:
-        match_data[Species.amchi] = list(
-            map(automol.smiles.amchi, match_data.pop(Species.smiles))
+    if try_fill and not count:
+        data = {k: [v] for k, v in zip(key_, val_, strict=True)}
+        match_df = polars.DataFrame(data)
+        match_df = schema.species_table(match_df)
+        match_df = polars.DataFrame(
+            match_df, schema={k: spc_df.schema[k] for k in match_df.columns}
         )
 
-    match_df = polars.DataFrame({col_name: True, **match_data})
-    return spc_df.join(match_df, on=match_data.keys(), how="left").with_columns(
-        polars.col(col_name).fill_null(False)
-    )
+    return None if match_df.is_empty() else match_df.row(0, named=True)
+
+
+def filter(  # noqa: A001
+    spc_df: polars.DataFrame,
+    vals_: Sequence[object | Sequence[object]] | None = None,
+    key_: str | Sequence[str] = Species.name,
+) -> polars.DataFrame:
+    """Filter to include only rows that match one or more species.
+
+    :param spc_df: A species DataFrame
+    :param col_name: The column name
+    :param vals_lst: Column values list
+    :param keys: Column keys
+    :return: The modified species DataFrame
+    """
+    match_exprs = [species_match_expression(val_, key_) for val_ in vals_]
+    return spc_df.filter(polars.any_horizontal(*match_exprs))
+
+
+# helpers
+def species_match_expression(
+    val_: object | Sequence[object],
+    key_: str | Sequence[str] = Species.name,
+) -> polars.Expr:
+    """Prepare a dictionary of species match data.
+
+    :param val_: Column values
+    :param key_: Column keys
+    """
+    if isinstance(key_, str):
+        key_ = [key_]
+        val_ = [val_]
+
+    match_data = dict(zip(key_, val_, strict=True))
+    if Species.smiles in match_data:
+        match_data[Species.amchi] = automol.smiles.amchi(match_data.pop(Species.smiles))
+
+    return polars.all_horizontal(*(polars.col(k) == v for k, v in match_data.items()))
