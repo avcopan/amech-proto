@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from automol.graph import enum
 
 import automech
 from automech.schema import Species
@@ -164,6 +165,28 @@ def test__update_parent_reaction_data(par_mech0, mech, rcount, scount):
     assert automech.species_count(par_mech) == scount
 
 
+@pytest.mark.parametrize(
+    "mech0, smarts, smis_, rcount, scount",
+    [
+        (
+            MECH_BUTENE,
+            enum.ReactionSmarts.abstraction,
+            [["C1=CCCC1", "CC=CC"], "[OH]"],
+            5,
+            9,
+        )
+    ],
+)
+def test__enumerate_reactions_from_smarts(mech0, smarts, smis_, rcount, scount):
+    """Test automech.enumerate_reactions_from_smarts."""
+    mech = automech.enumerate_reactions_from_smarts(
+        mech0, smarts, rcts_=smis_, spc_key_=Species.smiles
+    )
+    print(mech)
+    assert automech.reaction_count(mech) == rcount
+    assert automech.species_count(mech) == scount
+
+
 if __name__ == "__main__":
     # test__from_smiles()
     # test__expand_stereo(MECH_BUTENE, 6, 8, 1, 3, True)
@@ -175,4 +198,11 @@ if __name__ == "__main__":
     # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
-    test__network(MECH_NO_REACIONS)
+    # test__network(MECH_NO_REACIONS)
+    test__enumerate_reactions_from_smarts(
+        MECH_BUTENE,
+        enum.ReactionSmarts.abstraction,
+        [["C1=CCCC1", "CC=CC"], "[OH]"],
+        5,
+        9,
+    )

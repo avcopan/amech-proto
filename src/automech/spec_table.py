@@ -11,9 +11,33 @@ from .util import df_
 
 
 # selections
+def rows_dict(
+    spc_df: polars.DataFrame,
+    vals_: object | Sequence[object] | None = None,
+    key_: str | Sequence[str] = Species.name,
+    try_fill: bool = False,
+    fail_if_multiple: bool = True,
+) -> dict[str, dict[str, object]]:
+    """Select a row that matches a species.
+
+    :param spc_df: A species DataFrame
+    :param vals_: Column value(s) list to select
+    :param key_: Column key(s) to select by
+    :param try_fill: Whether attempt to fill missing values
+    :param fail_if_multiple: Whether to fail if multiple matches are found
+    :return: The modified species DataFrame
+    """
+    return {
+        r.get(Species.name): r
+        for r in rows(
+            spc_df, vals_, key_, try_fill=try_fill, fail_if_multiple=fail_if_multiple
+        )
+    }
+
+
 def rows(
     spc_df: polars.DataFrame,
-    vals_: object | Sequence[object],
+    vals_: object | Sequence[object] | None = None,
     key_: str | Sequence[str] = Species.name,
     try_fill: bool = False,
     fail_if_multiple: bool = True,
@@ -21,12 +45,15 @@ def rows(
     """Select a row that matches a species.
 
     :param spc_df: A species DataFrame
-    :param vals_: Column value(s) list
-    :param key_: Column key(s)
+    :param vals_: Column value(s) list to select
+    :param key_: Column key(s) to select by
     :param try_fill: Whether attempt to fill missing values
     :param fail_if_multiple: Whether to fail if multiple matches are found
     :return: The modified species DataFrame
     """
+    if vals_ is None:
+        return spc_df.rows(named=True)
+
     return [
         row(spc_df, v, key_, try_fill=try_fill, fail_if_multiple=fail_if_multiple)
         for v in vals_
@@ -49,6 +76,10 @@ def row(
     :param fail_if_multiple: Whether to fail if multiple matches are found
     :return: The modified species DataFrame
     """
+    if isinstance(key_, str):
+        key_ = [key_]
+        val_ = [val_]
+
     match_df = filter(spc_df, [val_], key_)
     count = df_.count(match_df)
 

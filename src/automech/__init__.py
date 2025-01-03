@@ -9,6 +9,7 @@ from ._mech import (
     display_reactions,
     display_species,
     drop_parent_reactions,
+    enumerate_reactions_from_smarts,
     expand_parent_stereo,
     expand_stereo,
     from_data,
@@ -79,6 +80,8 @@ __all__ = [
     "drop_parent_reactions",
     "update_parent_species_data",
     "update_parent_reaction_data",
+    # building
+    "enumerate_reactions_from_smarts",
     # comparisons
     "are_equivalent",
     # read/write,
