@@ -6,7 +6,8 @@ import pytest
 from automol.graph import enum
 
 import automech
-from automech.schema import Species
+from automech.schema import ReactionSorted, Species
+from automech.util import df_
 
 DATA_PATH = Path(__file__).parent / "data"
 
@@ -52,6 +53,16 @@ MECH_BUTENE_WITH_EXCLUDED_REACTIONS = automech.from_smiles(
         "[OH].[OH]>>OO",
     ],
     name_dct={"CC=CC": "C4e2", "CC=C[CH2]": "C4e2y1", "CC1C(O1)C": "C4x23"},
+)
+MECH_ETHANE = automech.from_smiles(
+    rxn_smis=[
+        "CC.[OH]>>C[CH2].O",
+        "C[CH2].[O][O]>>CCO[O]",
+        "C[CH2]>>C=C.[H]",
+        "CCO[O]>>C=C.O[O]",
+        "CCO[O]>>[CH2]COO",
+        "CCO[O]>>C[CH]OO",
+    ]
 )
 
 
@@ -187,6 +198,35 @@ def test__enumerate_reactions_from_smarts(mech0, smarts, smis_, rcount, scount):
     assert automech.species_count(mech) == scount
 
 
+@pytest.mark.parametrize(
+    "mech0, srt_dct0",
+    [
+        (
+            MECH_ETHANE,
+            {
+                0: (1, 1, 1),
+                1: (2, 1, 1),
+                2: (2, 1, 2),
+                3: (2, 1, 3),
+                4: (2, 1, 4),
+                5: (3, 1, 1),
+            },
+        )
+    ],
+)
+def test__with_sort_data(mech0, srt_dct0):
+    """Test automech.with_sort_data."""
+    mech = automech.with_sort_data(mech0)
+    rxn_df = df_.with_index(automech.reactions(mech), "id")
+    srt_dct = df_.lookup_dict(
+        rxn_df,
+        "id",
+        [ReactionSorted.pes, ReactionSorted.subpes, ReactionSorted.channel],
+    )
+    print(srt_dct)
+    assert srt_dct == srt_dct0, f"\n{srt_dct} !=\n{srt_dct0}"
+
+
 if __name__ == "__main__":
     # test__from_smiles()
     # test__expand_stereo(MECH_BUTENE, 6, 8, 1, 3, True)
@@ -199,10 +239,21 @@ if __name__ == "__main__":
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
     # test__network(MECH_NO_REACIONS)
-    test__enumerate_reactions_from_smarts(
-        MECH_BUTENE,
-        enum.ReactionSmarts.abstraction,
-        [["C1=CCCC1", "CC=CC"], "[OH]"],
-        5,
-        9,
+    # test__enumerate_reactions_from_smarts(
+    #     MECH_BUTENE,
+    #     enum.ReactionSmarts.abstraction,
+    #     [["C1=CCCC1", "CC=CC"], "[OH]"],
+    #     5,
+    #     9,
+    # )
+    test__with_sort_data(
+        MECH_ETHANE,
+        {
+            0: (1, 1, 1),
+            1: (2, 1, 1),
+            2: (2, 1, 2),
+            3: (2, 1, 3),
+            4: (2, 1, 4),
+            5: (3, 1, 1),
+        },
     )

@@ -65,6 +65,14 @@ class ReactionRate(Model):
     colliders: Struct
 
 
+class ReactionSorted(Model):
+    """Reaction table with sort information."""
+
+    pes: int
+    subpes: int
+    channel: int
+
+
 class ReactionRenamed(Model):
     """Renamed reaction table."""
 

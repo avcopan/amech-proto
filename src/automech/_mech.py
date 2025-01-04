@@ -18,6 +18,7 @@ from .schema import (
     ReactionMisc,
     ReactionRate,
     ReactionRenamed,
+    ReactionSorted,
     ReactionStereo,
     Species,
     SpeciesRenamed,
@@ -1136,6 +1137,47 @@ def enumerate_reactions_from_smarts(
     spc_df = polars.DataFrame(list(spc_dct.values()))
     rxn_df = polars.DataFrame(rxn_rows)
     return from_data(rxn_inp=rxn_df, spc_inp=spc_df)
+
+
+# sorting
+def with_sort_data(mech: Mechanism) -> Mechanism:
+    """Add columns to sort mechanism by species and reactions.
+
+    :param mech: Mechanism
+    :return: Mechanism with sort columns
+    """
+    # Sort reactions by shape and by reagent names
+    idx_col = df_.temp_column()
+    rxn_df = reactions(mech).sort(
+        polars.col(Reaction.reactants).list.len(),
+        polars.col(Reaction.products).list.len(),
+        polars.col(Reaction.reactants).list.to_struct(),
+        polars.col(Reaction.products).list.to_struct(),
+    )
+    rxn_df = df_.with_index(rxn_df, idx_col)
+    mech = set_reactions(mech, rxn_df)
+
+    # Generate sort data from network
+    srt_dct = net_.sort_data(network(mech), idx_col)
+    srt_data = [
+        {
+            idx_col: i,
+            ReactionSorted.pes: p,
+            ReactionSorted.subpes: s,
+            ReactionSorted.channel: c,
+        }
+        for i, (p, s, c) in srt_dct.items()
+    ]
+    srt_schema = {idx_col: polars.UInt32, **schema.types([ReactionSorted])}
+    srt_df = polars.DataFrame(srt_data, schema=srt_schema)
+
+    # Add sort data to reactions dataframe and sort
+    rxn_df = rxn_df.join(srt_df, on=idx_col, how="left")
+    rxn_df = rxn_df.drop(idx_col)
+    rxn_df = rxn_df.sort(
+        ReactionSorted.pes, ReactionSorted.subpes, ReactionSorted.channel
+    )
+    return set_reactions(mech, rxn_df)
 
 
 # comparison

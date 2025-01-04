@@ -139,6 +139,26 @@ def auxiliary_data(net: Network) -> dict[str, object]:
     return dict(net.graph)
 
 
+def node_values(net: Network, key: str) -> list[object]:
+    """Get specific values associated with each node.
+
+    :param net: Network
+    :param key: Key
+    :return: The values
+    """
+    return [d.get(key) for *_, d in node_data(net)]
+
+
+def edge_values(net: Network, key: str) -> list[object]:
+    """Get specific values associated with each edge.
+
+    :param net: Network
+    :param key: Key
+    :return: The values
+    """
+    return [d.get(key) for *_, d in edge_data(net)]
+
+
 # setters
 def set_nodes(net: Network, node_data: list[Node | NodeDatum]) -> Network:
     """Set the list of nodes in the network.
@@ -390,6 +410,19 @@ def pes_network(net: Network, formula: dict | str, aux: bool = False) -> Network
     return edge_subnetwork(net, edge_keys, aux=aux)
 
 
+def pes_networks_by_formula(net: Network, aux: bool = False) -> dict[str, Network]:
+    """Determine the PES networks in a larger network.
+
+    :param net: A network
+    :param aux: Pass along auxiliary data?
+    :return: The PES networks
+    """
+    return {
+        automol.form.string(fml): pes_network(net, fml, aux=aux)
+        for fml in mit.unique_everseen(d[Reaction.formula] for *_, d in edge_data(net))
+    }
+
+
 def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
     """Determine the PES networks in a larger network.
 
@@ -430,6 +463,37 @@ def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
             nets[i] = add_edge(x, edge, source_net=net)
 
     return nets
+
+
+def sort_data(net: Network, key: str) -> dict[int, tuple[int, int, int]]:
+    """Sort the network into PES, sub-PES, and channel according to a reaction key.
+
+    :param net: Network
+    :param key: Key for sorting
+    :return: Dictionary of PES, sub-PES, and channel indices
+    """
+
+    def _reaction_indices(net_: Network) -> list[int]:
+        return sorted(edge_values(net_, key))
+
+    pes_net_dct = pes_networks_by_formula(net)
+    pes_nets = list(
+        map(pes_net_dct.get, automol.form.sorted_sequence(pes_net_dct.keys()))
+    )
+
+    # Identify sorted PES, sub-PES, and channel indices for each reaction
+    srt_dct = {}
+    for pes_idx, pes_net in enumerate(pes_nets, start=1):
+        chn_idx_dct = {r: c for c, r in enumerate(_reaction_indices(pes_net), start=1)}
+        sub_nets = sorted(subpes_networks(pes_net), key=lambda x: _reaction_indices(x))
+        for sub_idx, sub_net in enumerate(sub_nets, start=1):
+            srt_dct.update(
+                {
+                    r: (pes_idx, sub_idx, chn_idx_dct.get(r))
+                    for r in _reaction_indices(sub_net)
+                }
+            )
+    return srt_dct
 
 
 def neighborhood(

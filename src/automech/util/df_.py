@@ -35,7 +35,7 @@ def temp_column(length: int = 24) -> str:
     :param length: The length of the temporary column name, defaults to 24
     :return: The column name
     """
-    return "".join(random.choice(string.ascii_letters) for _ in range(length))
+    return "".join(random.choice(string.ascii_lowercase) for _ in range(length))
 
 
 def from_csv(path: str) -> polars.DataFrame:

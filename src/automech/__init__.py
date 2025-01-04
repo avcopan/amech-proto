@@ -37,6 +37,7 @@ from ._mech import (
     thermo_temperatures,
     update_parent_reaction_data,
     update_parent_species_data,
+    with_sort_data,
     with_species,
     without_duplicate_reactions,
     without_unused_species,
@@ -82,6 +83,8 @@ __all__ = [
     "update_parent_reaction_data",
     # building
     "enumerate_reactions_from_smarts",
+    # sorting
+    "with_sort_data",
     # comparisons
     "are_equivalent",
     # read/write,
