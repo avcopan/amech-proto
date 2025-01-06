@@ -750,12 +750,14 @@ def expand_stereo(
     mech: Mechanism,
     enant: bool = True,
     strained: bool = False,
+    distinct_ts: bool = True,
 ) -> tuple[Mechanism, Mechanism]:
     """Expand stereochemistry for mechanism.
 
     :param mech: Mechanism
     :param enant: Distinguish between enantiomers?, defaults to True
     :param strained: Include strained stereoisomers?
+    :param distinct_ts: Include duplicate reactions for distinct TSs?
     :return: Mechanism with classified reactions, and one with unclassified
     """
     # Read in mechanism data
@@ -846,6 +848,9 @@ def expand_stereo(
         thermo_temps=thermo_temperatures(mech),
         rate_units=rate_units(mech),
     )
+
+    if not distinct_ts:
+        mech = without_duplicate_reactions(mech)
 
     return mech, err_mech
 
