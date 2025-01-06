@@ -254,7 +254,7 @@ def species_table(
     for model in models:
         df = model.validate(df)
 
-    return table_with_columns_from_models(df, models=models, keep_extra=keep_extra)
+    return table_with_columns_from_models(df, model_=models, keep_extra=keep_extra)
 
 
 def reaction_table(
@@ -296,7 +296,7 @@ def reaction_table(
     for model in models:
         df = model.validate(df)
 
-    df = table_with_columns_from_models(df, models=models, keep_extra=keep_extra)
+    df = table_with_columns_from_models(df, model_=models, keep_extra=keep_extra)
     return df, err
 
 
@@ -408,16 +408,36 @@ def _reaction_table_with_formula(
 
 
 def table_with_columns_from_models(
-    df: polars.DataFrame, models: Sequence[Model] = (), keep_extra: bool = True
+    df: polars.DataFrame, model_: Model | Sequence[Model] = (), keep_extra: bool = True
 ) -> polars.DataFrame:
     """Return a table with columns selected from models.
 
     :param df: The DataFrame
-    :param models: The models, defaults to ()
+    :param model_: The model(s), defaults to ()
     :param keep_extra: Keep extra columns that aren't in the models?
     :return: The DataFrame selection
     """
-    cols = list(itertools.chain(*(model.to_schema().columns for model in models)))
+    cols = columns(model_)
     if keep_extra:
         cols.extend(c for c in df.columns if c not in cols)
     return df.select(cols)
+
+
+def has_columns(df: polars.DataFrame, model_: Model | Sequence[Model]) -> bool:
+    """Determine whether a DataFrame has the columns in one or more models.
+
+    :param df: The DataFrame
+    :param model_: The model(s)
+    :return: `True` if it does, `False` if it doesn't
+    """
+    return all(c in df for c in columns(model_))
+
+
+def columns(model_: Model | Sequence[Model]) -> list[str]:
+    """Determine the list of columns in one ore more models.
+
+    :param model_: The model(s)
+    :return: The list of columns
+    """
+    model_ = model_ if isinstance(model_, Sequence) else [model_]
+    return list(itertools.chain(*(model.to_schema().columns for model in model_)))

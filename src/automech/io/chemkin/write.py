@@ -6,10 +6,10 @@ from pathlib import Path
 import automol
 import polars
 
-from ... import _mech, reac_table
+from ... import _mech, reac_table, schema
 from ..._mech import Mechanism
 from ...data import reac
-from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
+from ...schema import Reaction, ReactionRate, ReactionSorted, Species, SpeciesThermo
 from ...util import df_
 from .read import KeyWord
 
@@ -119,10 +119,27 @@ def reactions_block(mech: Mechanism) -> str:
     rxn_df = rxn_df.with_columns(polars.col("dup_key").is_duplicated().alias("dup"))
 
     # Generate the CHEMKIN strings for each reaction
-    rxn_strs = [
-        reac.chemkin_string(o, dup=d, eq_width=eq_width)
-        for o, d in rxn_df.select("obj", "dup").rows()
-    ]
+    if schema.has_columns(rxn_df, ReactionSorted):
+        cols = (
+            "obj",
+            "dup",
+            ReactionSorted.pes,
+            ReactionSorted.subpes,
+            ReactionSorted.channel,
+        )
+        rxn_strs = [
+            text_with_comments(
+                reac.chemkin_string(o, dup=d, eq_width=eq_width),
+                f"pes.subpes.channel  {p}.{s}.{c}",
+                sep="#",
+            )
+            for o, d, p, s, c in rxn_df.select(*cols).rows()
+        ]
+    else:
+        rxn_strs = [
+            reac.chemkin_string(o, dup=d, eq_width=eq_width)
+            for o, d in rxn_df.select("obj", "dup").rows()
+        ]
 
     # Generate the header
     rate_units = _mech.rate_units(mech)
@@ -146,3 +163,21 @@ def block(key, val, header: str | None = None) -> str:
     start = key if header is None else f"{key} {header}"
     val = val if isinstance(val, str) else "\n".join(val)
     return "\n\n".join([start, val, KeyWord.END])
+
+
+def text_with_comments(text: str, comments: str, sep: str = "!") -> str:
+    """Write text with comments to a combined string.
+
+    :param text: Text
+    :param comments: Comments
+    :return: Combined text and comments
+    """
+    text_lines = text.splitlines()
+    comm_lines = comments.splitlines()
+    text_width = max(map(len, text_lines)) + 2
+
+    lines = [
+        f"{t:<{text_width}} {sep} {c}" if c else t
+        for t, c in itertools.zip_longest(text_lines, comm_lines, fillvalue="")
+    ]
+    return "\n".join(lines)

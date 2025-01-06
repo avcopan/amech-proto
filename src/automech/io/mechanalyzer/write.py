@@ -1,6 +1,7 @@
 """Functions for writing Mechanalyzer-formatted files."""
 
 import io
+from pathlib import Path
 
 import automol
 import pandas
@@ -27,8 +28,8 @@ class MASpecies(Model):
 
 def mechanism(
     mech: Mechanism,
-    rxn_out: str | None = None,
-    spc_out: str | None = None,
+    rxn_out: str | Path | None = None,
+    spc_out: str | Path | None = None,
     string: bool = True,  # Change default to False when implemented
 ) -> tuple[str | dict, str | pandas.DataFrame]:
     """Write mechanism to MechAnalyzer format.
@@ -40,7 +41,11 @@ def mechanism(
         dictionary and species dataframe?
     :return: MechaAnalyzer reaction dictionary (or CHEMKIN string) and species dataframe
     """
-    mech_str = chemkin_write.mechanism(mech, out=rxn_out)
+    mech_str = chemkin_write.reactions_block(mech)
+    if rxn_out is not None:
+        rxn_out: Path = Path(rxn_out)
+        rxn_out.write_text(mech_str)
+
     spc_ret = species(mech, out=spc_out, string=string)
     if string:
         return mech_str, spc_ret
@@ -74,7 +79,7 @@ def species(
     )
     spc_df = spc_df.with_columns((polars.col(Species.spin) + 1).alias(MASpecies.mult))
     spc_df = table_with_columns_from_models(
-        spc_df, models=[MASpecies], keep_extra=False
+        spc_df, model_=[MASpecies], keep_extra=False
     )
     if out is not None:
         df_.to_csv(spc_df, out, quote_char="'")
