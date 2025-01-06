@@ -10,7 +10,31 @@ from .schema import Species
 from .util import df_
 
 
-# selections
+# sort
+def sort_by_formula(
+    spc_df: polars.DataFrame, key: str = Species.formula
+) -> polars.DataFrame:
+    """Sort species by formula.
+
+    :param spc_df: Species DataFrame
+    :param key: Formula column key
+    :return: Species DataFrame, sorted by formula
+    """
+    all_atoms = [s for s, *_ in spc_df.schema[key]]
+    heavy_atoms = [s for s in all_atoms if s != "H"]
+    return spc_df.sort(
+        polars.sum_horizontal(
+            polars.col(Species.formula).struct.field(*heavy_atoms)
+        ),  # heavy atoms
+        polars.sum_horizontal(
+            polars.col(Species.formula).struct.field(*all_atoms)
+        ),  # all atoms
+        polars.col(Species.formula),
+        nulls_last=True,
+    )
+
+
+# select
 def rows_dict(
     spc_df: polars.DataFrame,
     vals_: object | Sequence[object] | None = None,

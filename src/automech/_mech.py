@@ -1162,6 +1162,10 @@ def with_sort_data(mech: Mechanism) -> Mechanism:
     :param mech: Mechanism
     :return: Mechanism with sort columns
     """
+    # Sort species by formula
+    spc_df = spec_table.sort_by_formula(species(mech))
+    mech = set_species(mech, spc_df)
+
     # Sort reactions by shape and by reagent names
     idx_col = df_.temp_column()
     rxn_df = reactions(mech).sort(
