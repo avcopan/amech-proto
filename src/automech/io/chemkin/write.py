@@ -6,7 +6,7 @@ from pathlib import Path
 import automol
 import polars
 
-from ... import _mech
+from ... import _mech, reac_table
 from ..._mech import Mechanism
 from ...data import reac
 from ...schema import Reaction, ReactionRate, Species, SpeciesThermo
@@ -101,7 +101,7 @@ def reactions_block(mech: Mechanism) -> str:
     """
     # Generate reaction objects
     # (Eventually, we should have a function like _mech.with_reaction_objects(mech))
-    rxn_df = _mech.reactions(mech)
+    rxn_df = reac_table.with_rates(_mech.reactions(mech))
     cols = [
         Reaction.reactants,
         Reaction.products,

@@ -746,6 +746,18 @@ def without_duplicate_reactions(mech: Mechanism) -> Mechanism:
     return set_reactions(mech, rxn_df)
 
 
+def with_rates(mech: Mechanism) -> Mechanism:
+    """Add dummy placeholder rates to this Mechanism, if missing.
+
+    This is mainly needed for ChemKin mechanism writing.
+
+    :param rxn_df: Mechanism
+    :return: Mechanism with dummy rates, if missing
+    """
+    rxn_df = reactions(mech)
+    return set_reactions(mech, reac_table.with_rates(rxn_df))
+
+
 def expand_stereo(
     mech: Mechanism,
     enant: bool = True,
@@ -942,9 +954,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     #   a. Identify subset of reactions to be expanded
     par_rxn_df = reactions(par_mech)
     has_rate = ReactionRate.rate in par_rxn_df
-    if not has_rate:
-        rate = dict(data.rate.SimpleRate())
-        par_rxn_df = par_rxn_df.with_columns(polars.lit(rate).alias(ReactionRate.rate))
+    par_rxn_df = reac_table.with_rates(par_rxn_df)
 
     par_rxn_df = par_rxn_df.with_columns(
         polars.col(Reaction.reactants).alias(ReactionStereo.orig_reactants),
@@ -975,7 +985,8 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     exp_rxn_df = polars.concat([rem_rxn_df, exp_rxn_df])
 
     if not has_rate:
-        exp_rxn_df = exp_rxn_df.drop(ReactionRate.rate, ReactionMisc.orig_rate)
+        exp_rxn_df = reac_table.without_rates(exp_rxn_df)
+        exp_rxn_df = exp_rxn_df.drop(ReactionMisc.orig_rate)
 
     return from_data(
         rxn_inp=exp_rxn_df,

@@ -6,7 +6,7 @@ import more_itertools as mit
 import polars
 
 from . import data
-from .schema import Reaction
+from .schema import Reaction, ReactionRate
 from .util import df_
 
 DEFAULT_REAGENT_SEPARATOR = " + "
@@ -37,6 +37,42 @@ def reagent_strings(
 
 
 # transformations
+def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
+    """Add placeholder rate data to this DataFrame, if missing.
+
+    This is mainly needed for ChemKin mechanism writing.
+
+    :param rxn_df: Reaction DataFrame
+    :return: Reaction DataFrame
+    """
+    if ReactionRate.rate not in rxn_df:
+        rate = dict(data.rate.SimpleRate())
+        rxn_df = rxn_df.with_columns(polars.lit(rate).alias(ReactionRate.rate))
+
+    if ReactionRate.colliders not in rxn_df:
+        coll = {"M": None}
+        rxn_df = rxn_df.with_columns(polars.lit(coll).alias(ReactionRate.colliders))
+
+    return rxn_df
+
+
+def without_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
+    """Remove rate data from this DataFrame, if present.
+
+    This is mainly needed for ChemKin mechanism writing.
+
+    :param rxn_df: Reaction DataFrame
+    :return: Reaction DataFrame
+    """
+    if ReactionRate.rate not in rxn_df:
+        rxn_df = rxn_df.drop(ReactionRate.rate)
+
+    if ReactionRate.colliders not in rxn_df:
+        rxn_df = rxn_df.drop(ReactionRate.colliders)
+
+    return rxn_df
+
+
 def with_species_presence_column(
     rxn_df: polars.DataFrame, col_name: str, species_names: Sequence[str]
 ) -> polars.DataFrame:
