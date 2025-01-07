@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping, Sequence
 
+import automol
 import more_itertools as mit
 import polars
 
@@ -171,3 +172,29 @@ def translate_reagents(
         _translate(Reaction.reactants, rcol_out),
         _translate(Reaction.products, pcol_out),
     )
+
+
+def select_pes(
+    rxn_df: polars.DataFrame,
+    formula_: str | dict | Sequence[str | dict],
+    exclude: bool = False,
+) -> polars.DataFrame:
+    """Select (or exclude) PES by formula(s).
+
+    :param rxn_df: Reaction DataFrame
+    :param formula_: PES formula(s) to include or exclude
+    :param exclude: Whether to exclude or include the formula(s)
+    :return: Reaction DataFrame
+    """
+    formula_ = [formula_] if isinstance(formula_, str | dict) else formula_
+    fmls = [automol.form.from_string(f) if isinstance(f, str) else f for f in formula_]
+
+    def _match(fml: dict[str, int]) -> bool:
+        return any(automol.form.match(fml, f) for f in fmls)
+
+    col_tmp = df_.temp_column()
+    rxn_df = df_.map_(rxn_df, Reaction.formula, col_tmp, _match)
+    match_expr = polars.col(col_tmp)
+    rxn_df = rxn_df.filter(~match_expr if exclude else match_expr)
+    rxn_df = rxn_df.drop(col_tmp)
+    return rxn_df

@@ -121,6 +121,18 @@ def node_data(net: Network) -> list[NodeDatum]:
     return list(net.nodes.data())
 
 
+def species_data(net: Network) -> list[Data]:
+    """Get the data associated with each species.
+
+    :param net: Network
+    :return: Species data
+    """
+    spc_iter = itertools.chain.from_iterable(
+        d.get(Key.species) for *_, d in node_data(net)
+    )
+    return list(mit.unique_everseen(spc_iter, key=lambda d: d.get(Key.id)))
+
+
 def edge_data(net: Network) -> list[MultiEdgeDatum]:
     """Get the data associated with each edge.
 
@@ -147,6 +159,16 @@ def node_values(net: Network, key: str) -> list[object]:
     :return: The values
     """
     return [d.get(key) for *_, d in node_data(net)]
+
+
+def species_values(net: Network, key: str) -> list[object]:
+    """Get specific values associated with each species.
+
+    :param net: Network
+    :param key: Key
+    :return: Values
+    """
+    return [d.get(key) for d in species_data(net)]
 
 
 def edge_values(net: Network, key: str) -> list[object]:
@@ -337,14 +359,12 @@ def subnetwork(
     net: Network,
     nodes: Sequence[Node] = (),
     species_names: Sequence[str] = (),
-    aux: bool = False,
 ) -> Network:
     """Extract a node-induced sub-network from a network.
 
     :param net: A network
     :param nodes: A sequence of nodes
     :param species_names: A sequence of species names
-    :param aux: Pass along auxiliary data?
     :return: The sub-network
     """
     nodes = [*nodes, *nodes_(net, species_names=species_names)]
@@ -352,16 +372,15 @@ def subnetwork(
     return from_data(
         node_data=node_data(sub_net),
         edge_data=edge_data(sub_net),
-        aux_data=auxiliary_data(net) if aux else {},
+        aux_data=auxiliary_data(net),
     )
 
 
-def edge_subnetwork(net: Network, edges: Sequence[Edge], aux: bool = False) -> Network:
+def edge_subnetwork(net: Network, edges: Sequence[Edge]) -> Network:
     """Extract an edge-induced sub-network from a network.
 
     :param net: A network
     :param edges: A sequence of edges
-    :param aux: Pass along auxiliary data?
     :return: The sub-network
     """
     edges = edges_(net, edges=edges)
@@ -369,65 +388,62 @@ def edge_subnetwork(net: Network, edges: Sequence[Edge], aux: bool = False) -> N
     return from_data(
         node_data=node_data(sub_net),
         edge_data=edge_data(sub_net),
-        aux_data=auxiliary_data(net) if aux else {},
+        aux_data=auxiliary_data(net),
     )
 
 
-def connected_components(net: Network, aux: bool = False) -> list[Network]:
+def connected_components(net: Network) -> list[Network]:
     """Determine the connected components of a network.
 
     :param net: A network
-    :param aux: Pass along auxiliary data?
     :return: The connected components
     """
-    return [subnetwork(net, ks, aux=aux) for ks in networkx.connected_components(net)]
+    return [subnetwork(net, ks) for ks in networkx.connected_components(net)]
 
 
-def isolates(net: Network, aux: bool = False) -> Network:
+def isolates(net: Network) -> Network:
     """Get isolated species as a "network".
 
     :param net: A network
-    :param aux: Pass along auxiliary data?
     :return: The isolated species
     """
-    return subnetwork(net, networkx.isolates(net), aux=aux)
+    return subnetwork(net, networkx.isolates(net))
 
 
-def pes_network(net: Network, formula: dict | str, aux: bool = False) -> Network:
-    """Select the network associated with a specific PES.
+def select_pes(net: Network, formula_: str | dict | Sequence[str | dict]) -> Network:
+    """Select PES by formula(s).
 
-    :param net: A network
-    :param formula: The formula to select
-    :param aux: Pass along auxiliary data?
-    :return: The PES network
+    :param net: Network
+    :param formula_: PES formula(s) to include
+    :return: Network
     """
-    fml = automol.form.from_string(formula) if isinstance(formula, str) else formula
+    formula_ = [formula_] if isinstance(formula_, str | dict) else formula_
+    fmls = [automol.form.from_string(f) if isinstance(f, str) else f for f in formula_]
+
     edge_keys = [
         tuple(k)
         for *k, d in edge_data(net)
-        if automol.form.equal(d[Reaction.formula], fml)
+        if any(automol.form.equal(d[Reaction.formula], f) for f in fmls)
     ]
-    return edge_subnetwork(net, edge_keys, aux=aux)
+    return edge_subnetwork(net, edge_keys)
 
 
-def pes_networks_by_formula(net: Network, aux: bool = False) -> dict[str, Network]:
+def pes_networks_by_formula(net: Network) -> dict[str, Network]:
     """Determine the PES networks in a larger network.
 
     :param net: A network
-    :param aux: Pass along auxiliary data?
     :return: The PES networks
     """
     return {
-        automol.form.string(fml): pes_network(net, fml, aux=aux)
+        automol.form.string(fml): select_pes(net, fml)
         for fml in mit.unique_everseen(d[Reaction.formula] for *_, d in edge_data(net))
     }
 
 
-def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
+def subpes_networks(net: Network) -> list[Network]:
     """Determine the PES networks in a larger network.
 
     :param net: A network
-    :param aux: Pass along auxiliary data?
     :return: The PES component networks
     """
     # Set up empty list of sub-PES networks
@@ -436,7 +452,7 @@ def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
     # Determine the sub-PES networks among the unimolecular nodes
     multi_nodes = [n for n in nodes(net) if len(n) > 1]
     net_uni = remove_nodes(net, multi_nodes)
-    nets.extend(connected_components(net_uni, aux=aux))
+    nets.extend(connected_components(net_uni))
 
     # Partition the missing edges of the non-unimolecular nodes into those connected to
     # unimolecular nodes and those connected to other non-unimolecular nodes
@@ -458,7 +474,7 @@ def subpes_networks(net: Network, aux: bool = False) -> list[Network]:
             (None, None),
         )
         if i is None:
-            nets.append(edge_subnetwork(net, [edge], aux=True))
+            nets.append(edge_subnetwork(net, [edge]))
         else:
             nets[i] = add_edge(x, edge, source_net=net)
 

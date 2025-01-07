@@ -4,7 +4,7 @@ import dataclasses
 import itertools
 import json
 import textwrap
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 
 import automol
 import more_itertools as mit
@@ -236,6 +236,9 @@ def thermo_temperatures(mech: Mechanism) -> tuple[float, float, float] | None:
     return mech.thermo_temps
 
 
+thermo_temperatures_ = thermo_temperatures
+
+
 def rate_units(mech: Mechanism) -> tuple[str, str] | None:
     """Get rate units for mechanism.
 
@@ -243,6 +246,9 @@ def rate_units(mech: Mechanism) -> tuple[str, str] | None:
     :return: Rate units
     """
     return mech.rate_units
+
+
+rate_units_ = rate_units
 
 
 # setters
@@ -324,6 +330,31 @@ def set_rate_units(
         spc_inp=species(mech),
         thermo_temps=thermo_temperatures(mech),
         rate_units=units,
+    )
+
+
+def update(
+    mech: Mechanism,
+    rxn_df: polars.DataFrame | None = None,
+    spc_df: polars.DataFrame | None = None,
+    thermo_temps: tuple[float, float, float] | None = None,
+    rate_units: tuple[str, str] | None = None,
+) -> Mechanism:
+    """Update mechanism data.
+
+    :param rxn_df: Reactions DataFrame
+    :param spc_df: Species DataFrame
+    :param thermo_temps: Thermodynamic temperatures
+    :param rate_units: Rate units
+    :return: Mechanism
+    """
+    return from_data(
+        rxn_inp=reactions(mech) if rxn_df is None else rxn_df,
+        spc_inp=species(mech) if spc_df is None else spc_df,
+        thermo_temps=(
+            thermo_temperatures(mech) if thermo_temps is None else thermo_temps
+        ),
+        rate_units=rate_units_(mech) if rate_units is None else rate_units,
     )
 
 
@@ -543,6 +574,32 @@ def network(mech: Mechanism) -> net_.Network:
     )
 
 
+def apply_network_function(
+    mech: Mechanism, func: Callable, *args, **kwargs
+) -> Mechanism:
+    """Apply network function to mechanism.
+
+    :param mech: Mechanism
+    :param func: Function
+    :param *args: Function arguments
+    :param **kwargs: Function keyword arguments
+    :return: Mechanism
+    """
+    mech0 = mech
+
+    col_idx = df_.temp_column()
+    spc_df = df_.with_index(species(mech0), name=col_idx)
+    rxn_df = df_.with_index(reactions(mech0), name=col_idx)
+    mech0 = update(mech0, rxn_df=rxn_df, spc_df=spc_df)
+    net0 = network(mech0)
+    net = func(net0, *args, **kwargs)
+    spc_idxs = net_.species_values(net, col_idx)
+    rxn_idxs = net_.edge_values(net, col_idx)
+    spc_df = spc_df.filter(polars.col(col_idx).is_in(spc_idxs)).drop(col_idx)
+    rxn_df = rxn_df.filter(polars.col(col_idx).is_in(rxn_idxs)).drop(col_idx)
+    return update(mech0, rxn_df=rxn_df, spc_df=spc_df)
+
+
 # transformations
 def rename(
     mech: Mechanism, name_dct: dict[str, str], drop_missing: bool = False
@@ -600,63 +657,33 @@ def add_reactions(mech: Mechanism, rxn_df: polars.DataFrame) -> Mechanism:
     return set_reactions(mech, polars.concat([rxn_df0, rxn_df], how="diagonal_relaxed"))
 
 
-def pes_filter(
-    mech: Mechanism,
-    include_formulas: Sequence[str] | None = None,
-    exclude_formulas: Sequence[str] | None = None,
+def select_pes(
+    mech: Mechanism, formula_: str | dict | Sequence[str | dict], exclude: bool = False
 ) -> Mechanism:
-    """Filter mechanism by PES formulas.
+    """Select (or exclude) PES by formula(s).
 
     :param mech: Mechanism
-    :param include_formulas: PES formulas to include, defaults to None
-    :param exclude_formulas: PES formulas to exclude, defaults to None
-    :return: Filtered mechanism
+    :param formula_: PES formula(s) to include or exclude
+    :param exclude: Whether to exclude or include the formula(s)
+    :return: Mechanism
     """
-    rxn_df = reactions(mech)
-
-    if include_formulas is not None:
-        rxn_df = _reactions_pes_filter(rxn_df, include_formulas, include=True)
-
-    if exclude_formulas is not None:
-        rxn_df = _reactions_pes_filter(rxn_df, exclude_formulas, include=False)
-
+    rxn_df = reac_table.select_pes(reactions(mech), formula_, exclude=exclude)
     return without_unused_species(set_reactions(mech, rxn_df))
 
 
-def _reactions_pes_filter(
-    rxn_df: polars.DataFrame, fml_strs: Sequence[str], include: bool = False
-) -> polars.DataFrame:
-    """Filter mechanism by PES formulas."""
-    fmls = list(map(automol.form.from_string, fml_strs))
-
-    def _match(fml: dict[str, int]) -> bool:
-        return any(automol.form.match(fml, f) for f in fmls)
-
-    col_tmp = df_.temp_column()
-    rxn_df = df_.map_(rxn_df, Reaction.formula, col_tmp, _match)
-    match_expr = polars.col(col_tmp)
-    rxn_df = rxn_df.filter(match_expr if include else ~match_expr)
-    rxn_df = rxn_df.drop(col_tmp)
-    return rxn_df
-
-
-def neighborhood(mech: Mechanism, species_names: Sequence[str]) -> Mechanism:
+def neighborhood(
+    mech: Mechanism, species_names: Sequence[str], radius: int = 1
+) -> Mechanism:
     """Determine neighborhood of set of species.
 
     :param mech: Mechanism
     :param species_names: Names of species
+    :param radius: Maximum distance of neighbors to include, defaults to 1
     :return: Neighborhood mechanism
     """
-    col_nei = df_.temp_column()
-
-    rxn_df = reactions(mech)
-    rxn_df = reac_table.with_species_presence_column(
-        rxn_df, col_nei, species_names=species_names
+    return apply_network_function(
+        mech, net_.neighborhood, species_names=species_names, radius=radius
     )
-
-    rxn_df = rxn_df.filter(col_nei)
-    rxn_df = rxn_df.drop(col_nei)
-    return without_unused_species(set_reactions(mech, rxn_df))
 
 
 def with_species(
