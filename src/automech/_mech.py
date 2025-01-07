@@ -824,6 +824,7 @@ def expand_stereo(
         Reaction.reactants: ReactionStereo.orig_reactants,
         Reaction.products: ReactionStereo.orig_products,
     }
+    rxn_df = rxn_df.drop(col_dct.values(), strict=False)
     rxn_df = rxn_df.rename(col_dct)
 
     # Define expansion function

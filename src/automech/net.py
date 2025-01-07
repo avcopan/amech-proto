@@ -635,7 +635,7 @@ def display(
 
     # Transfer data over to PyVIS
     mech_vis = pyvis.network.Network(
-        height=height, directed=True, notebook=True, cdn_resources="in_line"
+        height=height, directed=False, notebook=True, cdn_resources="in_line"
     )
     for k, d in node_data(net):
         k = k if isinstance(k, str) else "+".join(k)
