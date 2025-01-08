@@ -3,8 +3,11 @@
 import os
 from pathlib import Path
 
+TextInput = str | Path
+TextOutput = str | Path | None
 
-def read_text(inp: str | Path) -> str:
+
+def read_text(inp: TextInput) -> str:
     """Read text input as a string.
 
     :param inp: Text input Path object, path string, or contents string.

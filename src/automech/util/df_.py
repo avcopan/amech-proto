@@ -29,6 +29,15 @@ def with_index(df: polars.DataFrame, name: str = "index") -> polars.DataFrame:
     return df.with_row_index(name=name)
 
 
+def has_values(df: polars.DataFrame) -> bool:
+    """Determine if DataFrame has non-null values.
+
+    :param df: DataFrame
+    :return: `True` if it does, `False` if it doesn't
+    """
+    return df.select(polars.any_horizontal(polars.col("*").is_not_null().any())).item()
+
+
 def temp_column(length: int = 24) -> str:
     """Generate a unique temporary column name for a DataFrame.
 

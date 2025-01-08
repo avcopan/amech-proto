@@ -3,14 +3,13 @@
 import itertools
 import re
 from collections.abc import Collection
-from pathlib import Path
 
 import more_itertools as mit
 import polars
 import pyparsing as pp
 from pyparsing import common as ppc
 
-from ... import data, schema
+from ... import data, schema, spec_table
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
 from ...schema import (
@@ -18,10 +17,10 @@ from ...schema import (
     Reaction,
     ReactionRate,
     Species,
-    SpeciesMisc,
     SpeciesThermo,
 )
 from ...util import df_, io_
+from ...util.io_ import TextInput, TextOutput
 
 
 class KeyWord:
@@ -66,7 +65,7 @@ A_UNIT = pp.Opt(
 
 # mechanism
 def mechanism(
-    inp: str, out: str | Path | None = None, spc_out: str | None = None
+    inp: TextInput, out: TextOutput = None, spc_out: TextOutput = None
 ) -> tuple[Mechanism, Errors]:
     """Extract the mechanism from a CHEMKIN file.
 
@@ -87,11 +86,11 @@ def mechanism(
 
 # reactions
 def reactions(
-    inp: str,
+    inp: TextInput,
     units: tuple[str, str] | None = None,
     spc_df: polars.DataFrame | None = None,
     spc_names: Collection[str] | None = None,
-    out: str | None = None,
+    out: TextOutput = None,
 ) -> tuple[polars.DataFrame, Errors]:
     """Extract reaction information as a dataframe from a CHEMKIN file.
 
@@ -149,7 +148,7 @@ def reactions(
     rxn_df = polars.DataFrame(data=data_dct, schema=schema_dct)
 
     rxn_df, err = schema.reaction_table(
-        rxn_df, spc_df=spc_df, models=(Reaction, ReactionRate), fail_on_error=False
+        rxn_df, spc_df=spc_df, model_=(Reaction, ReactionRate), fail_on_error=False
     )
 
     df_.to_csv(rxn_df, out)
@@ -157,7 +156,7 @@ def reactions(
     return rxn_df, err
 
 
-def reactions_block(inp: str, comments: bool = True) -> str:
+def reactions_block(inp: TextInput, comments: bool = True) -> str:
     """Get the reactions block, starting with 'REACTIONS' and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -166,7 +165,7 @@ def reactions_block(inp: str, comments: bool = True) -> str:
     return block(inp, KeyWord.REACTIONS, comments=comments)
 
 
-def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
+def reactions_units(inp: TextInput, default: bool = True) -> tuple[str, str]:
     """Get the E and A units for reaction rate constants.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -187,7 +186,7 @@ def reactions_units(inp: str, default: bool = True) -> tuple[str, str]:
 
 
 # species
-def species(inp: str, out: str | None = None) -> polars.DataFrame:
+def species(inp: TextInput, out: TextOutput = None) -> polars.DataFrame:
     """Get the list of species, along with their comments.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -220,7 +219,7 @@ def species(inp: str, out: str | None = None) -> polars.DataFrame:
     return spc_df
 
 
-def species_block(inp: str, comments: bool = True) -> str:
+def species_block(inp: TextInput, comments: bool = True) -> str:
     """Get the species block, starting with 'SPECIES' and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -229,7 +228,7 @@ def species_block(inp: str, comments: bool = True) -> str:
     return block(inp, KeyWord.SPECIES, comments=comments)
 
 
-def species_names(inp: str) -> list[str]:
+def species_names(inp: TextInput) -> list[str]:
     """Get the list of species.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -242,7 +241,7 @@ def species_names(inp: str) -> list[str]:
 
 # therm
 def thermo(
-    inp: str, spc_df: polars.DataFrame | None = None, out: str | None = None
+    inp: TextInput, spc_df: polars.DataFrame | None = None, out: TextOutput = None
 ) -> polars.DataFrame:
     """Get thermodynamic data as a dataframe.
 
@@ -254,24 +253,20 @@ def thermo(
     if therm_dct is None:
         return None
 
-    spc_df = spc_df.rename(
-        {SpeciesThermo.thermo_string: SpeciesMisc.orig_thermo_string}, strict=False
-    )
     data = {
         Species.name: list(therm_dct.keys()),
         SpeciesThermo.thermo_string: list(therm_dct.values()),
     }
     therm_df = polars.DataFrame(data)
     if spc_df is not None:
-        therm_df = spc_df.join(therm_df, how="left", on=Species.name)
-        therm_df = schema.species_table(therm_df, models=(SpeciesThermo,))
+        therm_df = spec_table.update_thermo(spc_df, therm_df)
 
     df_.to_csv(therm_df, out)
 
     return therm_df
 
 
-def thermo_block(inp: str, comments: bool = True) -> str:
+def thermo_block(inp: TextInput, comments: bool = True) -> str:
     """Get the therm block, starting with 'THERM' and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -280,7 +275,7 @@ def thermo_block(inp: str, comments: bool = True) -> str:
     return block(inp, KeyWord.THERM, comments=comments)
 
 
-def thermo_temperatures(inp: str) -> list[float] | None:
+def thermo_temperatures(inp: TextInput) -> list[float] | None:
     """Get the therm block temperatures.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -295,7 +290,7 @@ def thermo_temperatures(inp: str) -> list[float] | None:
     return list(map(float, temps)) if temps else None
 
 
-def thermo_entries(inp: str) -> list[str]:
+def thermo_entries(inp: TextInput) -> list[str]:
     """Get the therm block entries.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -312,7 +307,7 @@ def thermo_entries(inp: str) -> list[str]:
     return entries
 
 
-def thermo_entry_dict(inp: str) -> dict[str, str]:
+def thermo_entry_dict(inp: TextInput) -> dict[str, str]:
     """Get the therm block entries as a dictionary by species name.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -326,7 +321,7 @@ def thermo_entry_dict(inp: str) -> dict[str, str]:
 
 
 # generic
-def block(inp: str | Path, key: str, comments: bool = False) -> str:
+def block(inp: TextInput, key: str, comments: bool = False) -> str:
     """Get a keyword block, starting with a key and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -349,7 +344,7 @@ def block(inp: str | Path, key: str, comments: bool = False) -> str:
     return block_str.strip()
 
 
-def without_comments(inp: str | Path) -> str:
+def without_comments(inp: TextInput) -> str:
     """Get a CHEMKIN string or substring with comments removed.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -361,7 +356,7 @@ def without_comments(inp: str | Path) -> str:
     return re.sub(HASH_COMMENT_REGEX, "", inp)
 
 
-def all_comments(inp: str | Path) -> list[str]:
+def all_comments(inp: TextInput) -> list[str]:
     """Get all comments from a CHEMKIN string or substring.
 
     :param inp: A CHEMKIN mechanism, as a file path or string

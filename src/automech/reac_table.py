@@ -6,14 +6,51 @@ import automol
 import more_itertools as mit
 import polars
 
-from . import data
-from .schema import Reaction, ReactionRate
+from . import data, schema
+from .schema import Reaction, ReactionMisc, ReactionRate
 from .util import df_
 
 DEFAULT_REAGENT_SEPARATOR = " + "
 
 
+# update
+def update_rates(
+    rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame
+) -> polars.DataFrame:
+    """Read thermochemical data from one dataframe into another.
+
+    :param rxn_df: Reactions DataFrame
+    :param src_rxn_df: Reactions DataFrame with thermochemical data
+    :return: reactions DataFrame
+    """
+    rxn_df = rxn_df.rename({ReactionRate.rate: ReactionMisc.orig_rate}, strict=False)
+
+    if has_colliders(rxn_df):
+        raise NotImplementedError(
+            f"Updating rates with colliders not yet implemented.\n{rxn_df}"
+        )
+
+    col_key = df_.temp_column()
+    rxn_df = with_reaction_key(rxn_df, col_name=col_key)
+    src_rxn_df = with_reaction_key(src_rxn_df, col_name=col_key)
+    rxn_df = rxn_df.join(src_rxn_df, how="left", on=col_key)
+    rxn_df = rxn_df.drop(col_key)
+    rxn_df, *_ = schema.reaction_table(rxn_df, model_=ReactionRate)
+    return rxn_df
+
+
 # properties
+def has_colliders(rxn_df: polars.DataFrame) -> bool:
+    """Determine whether a reactions DataFrame has colliders.
+
+    :param rxn_df: Reactions DataFrame
+    :return: `True` if it does, `False` if not
+    """
+    return ReactionRate.colliders in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRate.colliders).struct.unnest()
+    )
+
+
 def reagents(rxn_df: polars.DataFrame) -> list[list[str]]:
     """Get reagents as lists.
 

@@ -6,8 +6,25 @@ import automol
 import polars
 
 from . import schema
-from .schema import Species
+from .schema import Species, SpeciesMisc, SpeciesThermo
 from .util import df_
+
+
+# update
+def update_thermo(
+    spc_df: polars.DataFrame, src_spc_df: polars.DataFrame
+) -> polars.DataFrame:
+    """Read thermochemical data from one dataframe into another.
+
+    :param spc_df: Species DataFrame
+    :param src_spc_df: Species DataFrame with thermochemical data
+    :return: Species DataFrame
+    """
+    spc_df = spc_df.rename(
+        {SpeciesThermo.thermo_string: SpeciesMisc.orig_thermo_string}, strict=False
+    )
+    spc_df = spc_df.join(src_spc_df, how="left", on=Species.name)
+    return schema.species_table(spc_df, model_=SpeciesThermo)
 
 
 # sort

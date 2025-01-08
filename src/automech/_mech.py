@@ -98,9 +98,9 @@ def from_data(
     """
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
     rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
-    spc_df = schema.species_table(spc_df, models=spc_models)
+    spc_df = schema.species_table(spc_df, model_=spc_models)
     rxn_df, _ = schema.reaction_table(
-        rxn_df, models=rxn_models, spc_df=spc_df, fail_on_error=fail_on_error
+        rxn_df, model_=rxn_models, spc_df=spc_df, fail_on_error=fail_on_error
     )
     mech = Mechanism(
         reactions=rxn_df,
@@ -960,7 +960,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
 
     #   b. Group by original names and isolate expanded stereoisomers
     sub_spc_df = species(exp_sub_mech)
-    sub_spc_df = schema.species_table(sub_spc_df, models=(SpeciesStereo,))
+    sub_spc_df = schema.species_table(sub_spc_df, model_=(SpeciesStereo,))
     sub_spc_df = sub_spc_df.select(*col_dct.keys(), *col_dct.values())
     sub_spc_df = sub_spc_df.group_by(SpeciesRenamed.orig_name).agg(polars.all())
     sub_spc_df = sub_spc_df.filter(polars.col(Species.name).list.len() > 1)

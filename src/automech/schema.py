@@ -126,6 +126,15 @@ class Errors(BaseModel):
     species: polars.DataFrame | None = None
     reactions: polars.DataFrame | None = None
 
+    def is_empty(self) -> bool:
+        """Determine whether the errors object is empty.
+
+        :return: `True` if it is, `False` if it isn't
+        """
+        return (self.species is None or self.species.is_empty()) and (
+            self.reactions is None or self.reactions.is_empty()
+        )
+
 
 def types(
     models: Sequence[Model], keys: Sequence[str] | None = None
@@ -168,7 +177,7 @@ def reaction_types(keys: Sequence[str] | None = None) -> dict[str, type]:
 
 def species_table(
     df: polars.DataFrame,
-    models: Sequence[Model] = (),
+    model_: Sequence[Model] = (),
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
@@ -184,11 +193,13 @@ def species_table(
     :param keep_extra: Keep extra columns that aren't in the models?
     :return: The validated DataFrame
     """
-    if Species not in models:
-        models = (Species, *models)
+    model_ = model_ if isinstance(model_, Sequence) else [model_]
+
+    if Species not in model_:
+        model_ = (Species, *model_)
 
     if df.is_empty():
-        df = polars.DataFrame([], schema={**df.schema, **types(models)})
+        df = polars.DataFrame([], schema={**df.schema, **types(model_)})
 
     dt_dct = species_types()
     df = df.rename({k: str.lower(k) for k in df.columns})
@@ -257,15 +268,15 @@ def species_table(
             df, Species.amchi, Species.charge, lambda _: 0, dtype_=dt, dct=charge_dct
         )
 
-    for model in models:
+    for model in model_:
         df = model.validate(df)
 
-    return table_with_columns_from_models(df, model_=models, keep_extra=keep_extra)
+    return table_with_columns_from_models(df, model_=model_, keep_extra=keep_extra)
 
 
 def reaction_table(
     df: polars.DataFrame,
-    models: Sequence[Model] = (),
+    model_: Sequence[Model] = (),
     spc_df: polars.DataFrame | None = None,
     keep_extra: bool = True,
     fail_on_error: bool = True,
@@ -279,11 +290,13 @@ def reaction_table(
     :param fail_on_error: Whether or not to raise an Exception if there is an error
     :return: The validated DataFrame, along with any errors
     """
-    if Reaction not in models:
-        models = (Reaction, *models)
+    model_ = model_ if isinstance(model_, Sequence) else [model_]
+
+    if Reaction not in model_:
+        model_ = (Reaction, *model_)
 
     if df.is_empty():
-        df = polars.DataFrame([], schema={**df.schema, **types(models)})
+        df = polars.DataFrame([], schema={**df.schema, **types(model_)})
 
     df = df.rename({k: str.lower(k) for k in df.columns})
     df = reaction_table_with_sorted_reagents(df)
@@ -299,10 +312,10 @@ def reaction_table(
     df = df.filter(~check_expr)
     df = df.drop(check_cols)
 
-    for model in models:
+    for model in model_:
         df = model.validate(df)
 
-    df = table_with_columns_from_models(df, model_=models, keep_extra=keep_extra)
+    df = table_with_columns_from_models(df, model_=model_, keep_extra=keep_extra)
     return df, err
 
 
