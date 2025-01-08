@@ -1,7 +1,6 @@
 """Functions for reading CHEMKIN-formatted files."""
 
 import itertools
-import os
 import re
 from collections.abc import Collection
 from pathlib import Path
@@ -14,8 +13,15 @@ from pyparsing import common as ppc
 from ... import data, schema
 from ..._mech import Mechanism
 from ..._mech import from_data as mechanism_from_data
-from ...schema import Errors, Reaction, ReactionRate, Species, SpeciesThermo
-from ...util import df_
+from ...schema import (
+    Errors,
+    Reaction,
+    ReactionRate,
+    Species,
+    SpeciesMisc,
+    SpeciesThermo,
+)
+from ...util import df_, io_
 
 
 class KeyWord:
@@ -248,6 +254,9 @@ def thermo(
     if therm_dct is None:
         return None
 
+    spc_df = spc_df.rename(
+        {SpeciesThermo.thermo_string: SpeciesMisc.orig_thermo_string}, strict=False
+    )
     data = {
         Species.name: list(therm_dct.keys()),
         SpeciesThermo.thermo_string: list(therm_dct.values()),
@@ -271,7 +280,7 @@ def thermo_block(inp: str, comments: bool = True) -> str:
     return block(inp, KeyWord.THERM, comments=comments)
 
 
-def thermo_temperatures(inp: str) -> list[float]:
+def thermo_temperatures(inp: str) -> list[float] | None:
     """Get the therm block temperatures.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -283,7 +292,7 @@ def thermo_temperatures(inp: str) -> list[float]:
 
     parser = therm_temperature_expression()
     temps = parser.parse_string(therm_block_str).as_list()
-    return list(map(float, temps))
+    return list(map(float, temps)) if temps else None
 
 
 def thermo_entries(inp: str) -> list[str]:
@@ -317,7 +326,7 @@ def thermo_entry_dict(inp: str) -> dict[str, str]:
 
 
 # generic
-def block(inp: str, key: str, comments: bool = False) -> str:
+def block(inp: str | Path, key: str, comments: bool = False) -> str:
     """Get a keyword block, starting with a key and ending in 'END'.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
@@ -325,49 +334,47 @@ def block(inp: str, key: str, comments: bool = False) -> str:
     :param comments: Include comments?
     :return: The block
     """
-    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
+    inp = io_.read_text(inp)
 
-    block_par = pp.Opt(
-        pp.Suppress(...)
-        + pp.QuotedString(key, end_quote_char=KeyWord.END, multiline=True)
-    )
-    res = block_par.parse_string(inp)
-    if not res:
+    pattern = rf"{key[:4]}\S*(.*?){KeyWord.END}"
+    match = re.search(pattern, inp, re.M | re.I | re.DOTALL)
+    if not match:
         return None
 
-    (block_str,) = res
+    block_str = match.group(1)
     # Remove comments, if requested
     if not comments:
         block_str = without_comments(block_str)
-    return block_str
+
+    return block_str.strip()
 
 
-def without_comments(inp: str) -> str:
+def without_comments(inp: str | Path) -> str:
     """Get a CHEMKIN string or substring with comments removed.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The string, without comments
     """
-    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
+    inp = io_.read_text(inp)
 
     inp = re.sub(COMMENT_REGEX, "", inp)
     return re.sub(HASH_COMMENT_REGEX, "", inp)
 
 
-def all_comments(inp: str) -> list[str]:
+def all_comments(inp: str | Path) -> list[str]:
     """Get all comments from a CHEMKIN string or substring.
 
     :param inp: A CHEMKIN mechanism, as a file path or string
     :return: The comments
     """
-    inp = Path(inp).read_text() if os.path.exists(inp) else str(inp)
+    inp = io_.read_text(inp)
 
     return re.findall(COMMENT_REGEX, inp)
 
 
 def therm_temperature_expression() -> pp.ParseExpression:
     """Generate a pyparsing expression for the therm block temperatures."""
-    return pp.Suppress(...) + ppc.number * 3
+    return pp.Suppress(... + pp.Opt(pp.CaselessKeyword("ALL"))) + pp.Opt(ppc.number * 3)
 
 
 def therm_entry_expression() -> pp.ParseExpression:

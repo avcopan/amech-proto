@@ -101,6 +101,12 @@ class ReactionMisc(Model):
     orig_rate: Struct
 
 
+class SpeciesMisc(Model):
+    """Miscellaneous species columns (not for validation)."""
+
+    orig_thermo_string: str
+
+
 REACTION_MODELS = (
     Reaction,
     ReactionRate,
