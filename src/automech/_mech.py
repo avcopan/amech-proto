@@ -765,7 +765,7 @@ def without_duplicate_reactions(mech: Mechanism) -> Mechanism:
     """
     col_tmp = df_.temp_column()
     rxn_df = reactions(mech)
-    rxn_df = reac_table.with_reaction_key(rxn_df, col_name=col_tmp)
+    rxn_df = reac_table.with_reaction_key(rxn_df, col=col_tmp)
     rxn_df = rxn_df.unique(col_tmp, maintain_order=True)
     rxn_df = rxn_df.drop(col_tmp)
     return set_reactions(mech, rxn_df)
@@ -813,8 +813,8 @@ def expand_stereo(
         rxn_df,
         trans=spc_df0[Species.name],
         trans_into=spc_df0[Species.amchi],
-        rcol_out="ramchis",
-        pcol_out="pamchis",
+        rct_col="ramchis",
+        prd_col="pamchis",
     )
 
     # Add "orig" prefix to current reactant and product columns
