@@ -417,7 +417,7 @@ def chemkin_string(rxn: Reaction, eq_width: int = 55, dup: bool = False) -> str:
     if dup:
         rxn_str += "\n    DUPLICATE"
 
-    return f"{rxn_str}\n"
+    return f"{rxn_str}"
 
 
 def from_chemkin_string(rxn_str: str) -> Reaction:

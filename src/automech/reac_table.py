@@ -1,5 +1,6 @@
 """Functions acting on reactions DataFrames."""
 
+import itertools
 from collections.abc import Mapping, Sequence
 
 import automol
@@ -57,9 +58,20 @@ def reagents(rxn_df: polars.DataFrame) -> list[list[str]]:
     :param rxn_df: A reactions DataFrame
     :return: The reagents
     """
-    rcts = rxn_df[Reaction.reactants].to_list()
-    prds = rxn_df[Reaction.products].to_list()
+    rcts = rxn_df.get_column(Reaction.reactants).to_list()
+    prds = rxn_df.get_column(Reaction.products).to_list()
     return sorted(mit.unique_everseen(rcts + prds))
+
+
+def species(rxn_df: polars.DataFrame) -> list[str]:
+    """Get species in reactions DataFrame.
+
+    :param rxn_df: Reactions DataFrame
+    :return: Species names
+    """
+    rcts = rxn_df.get_column(Reaction.reactants).to_list()
+    prds = rxn_df.get_column(Reaction.products).to_list()
+    return sorted(mit.unique_everseen(itertools.chain.from_iterable(rcts + prds)))
 
 
 def reagent_strings(

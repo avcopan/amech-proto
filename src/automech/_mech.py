@@ -331,7 +331,7 @@ def set_rate_units(
     )
 
 
-def update(
+def update_data(
     mech: Mechanism,
     rxn_df: polars.DataFrame | None = None,
     spc_df: polars.DataFrame | None = None,
@@ -428,7 +428,8 @@ def species_names(
     spc_names = spc_df[Species.name].to_list()
 
     if rxn_only:
-        rxn_spc_names = reaction_species_names(mech)
+        rxn_df = reactions(mech)
+        rxn_spc_names = reac_table.species(rxn_df)
         spc_names = [n for n in spc_names if n in rxn_spc_names]
 
     return spc_names
@@ -587,16 +588,16 @@ def apply_network_function(
     mech0 = mech
 
     col_idx = df_.temp_column()
-    spc_df = df_.with_index(species(mech0), name=col_idx)
-    rxn_df = df_.with_index(reactions(mech0), name=col_idx)
-    mech0 = update(mech0, rxn_df=rxn_df, spc_df=spc_df)
+    spc_df = df_.with_index(species(mech0), col=col_idx)
+    rxn_df = df_.with_index(reactions(mech0), col=col_idx)
+    mech0 = update_data(mech0, rxn_df=rxn_df, spc_df=spc_df)
     net0 = network(mech0)
     net = func(net0, *args, **kwargs)
     spc_idxs = net_.species_values(net, col_idx)
     rxn_idxs = net_.edge_values(net, col_idx)
     spc_df = spc_df.filter(polars.col(col_idx).is_in(spc_idxs)).drop(col_idx)
     rxn_df = rxn_df.filter(polars.col(col_idx).is_in(rxn_idxs)).drop(col_idx)
-    return update(mech0, rxn_df=rxn_df, spc_df=spc_df)
+    return update_data(mech0, rxn_df=rxn_df, spc_df=spc_df)
 
 
 # transformations
@@ -931,6 +932,114 @@ def _expand_species_stereo(
     return spc_df
 
 
+# binary operations
+def intersection(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    spc_key: str = Species.name,
+    spc_key2: str | None = None,
+    right: bool = False,
+) -> tuple[Mechanism, Mechanism]:
+    """Determine intersection between one mechanism and another.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param spc_key: Species ID column for comparison
+    :param spc_key2: Second mechanism species ID column, if different
+    :param right: Whether to return data from `mech2` instead of `mech1`
+    :return: Mechanism intersection
+    """
+    tmp_col = df_.temp_column()
+    mech1, mech2 = with_intersection_columns(
+        mech1, mech2, spc_key=spc_key, spc_key2=spc_key2, col=tmp_col
+    )
+    mech = mech2 if right else mech1
+    rxn_df = reactions(mech).filter(polars.col(tmp_col)).drop(tmp_col)
+    spc_df = species(mech).filter(polars.col(tmp_col)).drop(tmp_col)
+    return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
+
+
+def difference(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    spc_key: str = Species.name,
+    spc_key2: str | None = None,
+    right: bool = False,
+    col: str = "intersection",
+) -> tuple[Mechanism, Mechanism]:
+    """Determine difference between one mechanism and another.
+
+    Includes shared species as needed to balance reactions. These can be identified from
+    the intersection column, which is named based on the `col` keyword argument.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param spc_key: Species ID column for comparison
+    :param spc_key2: Second mechanism species ID column, if different
+    :param right: Whether to return data from `mech2` instead of `mech1`
+    :param col: Output column identifying common species and reactions
+    :return: Mechanism difference
+    """
+    mech1, mech2 = with_intersection_columns(
+        mech1, mech2, spc_key=spc_key, spc_key2=spc_key2, col=col
+    )
+    mech = mech2 if right else mech1
+    rxn_df = reactions(mech).filter(~polars.col(col)).drop(col)
+    # Retain species that are needed to balance reactions
+    # (and keep the intersection column, so users can determine which are which)
+    rxn_spcs = reac_table.species(rxn_df)
+    spc_df = species(mech).filter(
+        ~polars.col(col) | polars.col(Species.name).is_in(rxn_spcs)
+    )
+    return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
+
+
+def with_intersection_columns(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    spc_key: str = Species.name,
+    spc_key2: str | None = None,
+    col: str = "intersection",
+) -> tuple[Mechanism, Mechanism]:
+    """Add columns to Mechanism pair indicating their intersection.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param spc_key: Species ID column for comparison
+    :param spc_key2: Second mechanism species ID column, if different
+    :param col: Output column identifying common species and reactions
+    :return: First and second Mechanisms with intersection columns
+    """
+    spc_key2 = spc_key if spc_key2 is None else spc_key2
+
+    # Determine species intersection
+    spc_df1, spc_df2 = map(species, (mech1, mech2))
+    spc_df1, spc_df2 = df_.with_intersection_columns(
+        spc_df1, spc_df2, comp_col_=spc_key, comp_col2_=spc_key2, col=col
+    )
+
+    # Create dictionaries for mapping species names to keys
+    spc_dct1 = df_.lookup_dict(spc_df1, Species.name, spc_key)
+    spc_dct2 = df_.lookup_dict(spc_df2, Species.name, spc_key2)
+
+    # Determine reaction intersection
+    tmp_col = df_.temp_column()
+    rxn_df1, rxn_df2 = map(reactions, (mech1, mech2))
+    rxn_df1 = reac_table.with_reaction_key(rxn_df1, tmp_col, spc_key_dct=spc_dct1)
+    rxn_df2 = reac_table.with_reaction_key(rxn_df2, tmp_col, spc_key_dct=spc_dct2)
+    rxn_df1, rxn_df2 = df_.with_intersection_columns(
+        rxn_df1, rxn_df2, comp_col_=tmp_col, col=col
+    )
+    rxn_df1 = rxn_df1.drop(tmp_col)
+    rxn_df2 = rxn_df2.drop(tmp_col)
+
+    # Return the updated mechanisms
+    mech1 = update_data(mech1, rxn_df=rxn_df1, spc_df=spc_df1)
+    mech2 = update_data(mech2, rxn_df=rxn_df2, spc_df=spc_df2)
+    return mech1, mech2
+
+
+# parent
 def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechanism:
     """Apply stereoexpansion of submechanism to parent mechanism.
 
@@ -1310,7 +1419,7 @@ def display_species(
 
     :param mech: Mechanism
     :param vals_: Species column value(s) list for selection
-    :param key_: Species column key(s) for selection
+    :param spc_key_: Species column key(s) for selection
     :param stereo: Include stereochemistry in species drawings?, defaults to True
     :param keys: Keys of extra columns to print
     """
