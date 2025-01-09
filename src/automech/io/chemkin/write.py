@@ -93,10 +93,11 @@ def thermo_block(mech: Mechanism) -> str:
     return block(KeyWord.THERM, therm_strs, header=header)
 
 
-def reactions_block(mech: Mechanism) -> str:
+def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     """Write the reactions block to a string.
 
     :param mech: A mechanism
+    :param frame: Whether to frame the block with its header and footer
     :return: The reactions block string
     """
     # Generate reaction objects
@@ -128,10 +129,13 @@ def reactions_block(mech: Mechanism) -> str:
             ReactionSorted.channel,
         )
         rxn_strs = [
-            text_with_comments(
-                reac.chemkin_string(o, dup=d, eq_width=eq_width),
-                f"pes.subpes.channel  {p}.{s}.{c}",
-                sep="#",
+            (
+                text_with_comments(
+                    reac.chemkin_string(o, dup=d, eq_width=eq_width),
+                    f"pes.subpes.channel  {p}.{s}.{c}",
+                )
+                if any(x is not None for x in (p, s, c))
+                else reac.chemkin_string(o, dup=d, eq_width=eq_width)
             )
             for o, d, p, s, c in rxn_df.select(*cols).rows()
         ]
@@ -149,19 +153,22 @@ def reactions_block(mech: Mechanism) -> str:
         e_unit, a_unit = rate_units
         header = f"   {e_unit}   {a_unit}"
 
-    return block(KeyWord.REACTIONS, rxn_strs, header=header)
+    return block(KeyWord.REACTIONS, rxn_strs, header=header, frame=frame)
 
 
-def block(key, val, header: str | None = None) -> str:
+def block(key, val, header: str | None = None, frame: bool = True) -> str:
     """Write a block to a string.
 
     :param key: The starting key for the block
     :param val: The block value(s)
     :param header: A header for the block
+    :param frame: Whether to frame the block with its header and footer
     :return: The block
     """
     start = key if header is None else f"{key} {header}"
     val = val if isinstance(val, str) else "\n".join(val)
+    if not frame:
+        return val
     return "\n\n".join([start, val, KeyWord.END])
 
 
