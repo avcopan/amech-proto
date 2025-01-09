@@ -15,16 +15,14 @@ from . import net as net_
 from .schema import (
     Model,
     Reaction,
-    ReactionMisc,
     ReactionRate,
-    ReactionRenamed,
     ReactionSorted,
     ReactionStereo,
     Species,
-    SpeciesRenamed,
     SpeciesStereo,
     SpeciesThermo,
 )
+from .schema import col as col_
 from .util import df_
 
 
@@ -501,7 +499,7 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
 
     # Read in species and names
     spc1_df = species(mech1)
-    spc1_df = spc1_df.rename({Species.name: SpeciesRenamed.orig_name})
+    spc1_df = spc1_df.rename(col_.to_orig(Species.name))
 
     spc2_df = species(mech2)
     spc2_df = spc2_df.select([Species.name, *match_cols])
@@ -510,8 +508,9 @@ def rename_dict(mech1: Mechanism, mech2: Mechanism) -> tuple[dict[str, str], lis
     incl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="inner")
     excl_spc_df = spc1_df.join(spc2_df, on=match_cols, how="anti")
 
-    name_dct = df_.lookup_dict(incl_spc_df, SpeciesRenamed.orig_name, Species.name)
-    missing_names = excl_spc_df[SpeciesRenamed.orig_name].to_list()
+    orig_col = col_.orig(Species.name)
+    name_dct = df_.lookup_dict(incl_spc_df, orig_col, Species.name)
+    missing_names = excl_spc_df[orig_col].to_list()
     return name_dct, missing_names
 
 
@@ -620,8 +619,7 @@ def rename(
 
     rxn_df = reactions(mech)
     rxn_df = rxn_df.with_columns(
-        polars.col(Reaction.reactants).alias(ReactionRenamed.orig_reactants),
-        polars.col(Reaction.products).alias(ReactionRenamed.orig_products),
+        **col_.from_orig([Reaction.reactants, Reaction.products])
     )
 
     repl_expr = polars.element().replace(name_dct)
@@ -820,16 +818,13 @@ def expand_stereo(
     )
 
     # Add "orig" prefix to current reactant and product columns
-    col_dct = {
-        Reaction.reactants: ReactionStereo.orig_reactants,
-        Reaction.products: ReactionStereo.orig_products,
-    }
+    col_dct = col_.to_orig([Reaction.reactants, Reaction.products])
     rxn_df = rxn_df.drop(col_dct.values(), strict=False)
     rxn_df = rxn_df.rename(col_dct)
 
     # Define expansion function
     name_dct: dict = df_.lookup_dict(
-        spc_df, (SpeciesStereo.orig_name, Species.amchi), Species.name
+        spc_df, (col_.orig(Species.name), Species.amchi), Species.name
     )
 
     def _expand_reaction(rchi0s, pchi0s, rname0s, pname0s):
@@ -859,8 +854,7 @@ def expand_stereo(
     cols_in = (
         "ramchis",
         "pamchis",
-        ReactionStereo.orig_reactants,
-        ReactionStereo.orig_products,
+        *map(col_.orig, [Reaction.reactants, Reaction.products]),
     )
     cols_out = (Reaction.reactants, Reaction.products, ReactionStereo.amchi)
     rxn_df = df_.map_(rxn_df, cols_in, cols_out, _expand_reaction, bar=True)
@@ -911,9 +905,9 @@ def _expand_species_stereo(
         """Expand stereo for AMChIs."""
         return automol.amchi.expand_stereo(chi, enant=enant)
 
-    spc_df = spc_df.rename({Species.amchi: SpeciesStereo.orig_amchi})
+    spc_df = spc_df.rename(col_.to_orig(Species.amchi))
     spc_df = df_.map_(
-        spc_df, SpeciesStereo.orig_amchi, Species.amchi, _expand_amchi, bar=True
+        spc_df, col_.orig(Species.amchi), Species.amchi, _expand_amchi, bar=True
     )
     spc_df = spc_df.explode(polars.col(Species.amchi))
 
@@ -922,9 +916,9 @@ def _expand_species_stereo(
         """Determine stereo name from AMChI."""
         return automol.amchi.chemkin_name(chi, root_name=orig_name)
 
-    spc_df = spc_df.rename({Species.name: SpeciesStereo.orig_name})
+    spc_df = spc_df.rename(col_.to_orig(Species.name))
     spc_df = df_.map_(
-        spc_df, (SpeciesStereo.orig_name, Species.amchi), Species.name, _stereo_name
+        spc_df, (col_.orig(Species.name), Species.amchi), Species.name, _stereo_name
     )
 
     # Update SMILES strings
@@ -932,7 +926,7 @@ def _expand_species_stereo(
         """Determine stereo smiles from AMChI."""
         return automol.amchi.smiles(chi)
 
-    spc_df = spc_df.rename({Species.smiles: SpeciesStereo.orig_smiles})
+    spc_df = spc_df.rename(col_.to_orig(Species.smiles))
     spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles, bar=True)
     return spc_df
 
@@ -952,28 +946,24 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     """
     # 1. Species table
     #   a. Add stereo columns to par_mech species table
-    col_dct = {
-        Species.name: SpeciesStereo.orig_name,
-        Species.smiles: SpeciesStereo.orig_smiles,
-        Species.amchi: SpeciesStereo.orig_amchi,
-    }
+    col_dct = col_.to_orig([Species.name, Species.smiles, Species.amchi])
     par_spc_df = species(par_mech)
     par_spc_df = par_spc_df.rename(col_dct)
 
     #   b. Group by original names and isolate expanded stereoisomers
     sub_spc_df = species(exp_sub_mech)
-    sub_spc_df = schema.species_table(sub_spc_df, model_=(SpeciesStereo,))
+    sub_spc_df = schema.species_table(sub_spc_df, model_=SpeciesStereo)
     sub_spc_df = sub_spc_df.select(*col_dct.keys(), *col_dct.values())
-    sub_spc_df = sub_spc_df.group_by(SpeciesRenamed.orig_name).agg(polars.all())
+    sub_spc_df = sub_spc_df.group_by(col_.orig(Species.name)).agg(polars.all())
     sub_spc_df = sub_spc_df.filter(polars.col(Species.name).list.len() > 1)
 
     #   c. Form species expansion dictionary, to be used for reaction expansion
     exp_dct: dict[str, list[str]] = df_.lookup_dict(
-        sub_spc_df, SpeciesRenamed.orig_name, Species.name
+        sub_spc_df, col_.orig(Species.name), Species.name
     )
 
     #   d. Join on original names, explode, and fill in non-stereoisomer columns
-    exp_spc_df = par_spc_df.join(sub_spc_df, how="left", on=SpeciesStereo.orig_name)
+    exp_spc_df = par_spc_df.join(sub_spc_df, how="left", on=col_.orig(Species.name))
     exp_spc_df = exp_spc_df.drop(polars.selectors.ends_with("_right"))
     exp_spc_df = exp_spc_df.explode(*col_dct.keys())
     exp_spc_df = exp_spc_df.with_columns(
@@ -987,9 +977,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     par_rxn_df = reac_table.with_rates(par_rxn_df)
 
     par_rxn_df = par_rxn_df.with_columns(
-        polars.col(Reaction.reactants).alias(ReactionStereo.orig_reactants),
-        polars.col(Reaction.products).alias(ReactionStereo.orig_products),
-        polars.col(ReactionRate.rate).alias(ReactionMisc.orig_rate),
+        **col_.from_orig([Reaction.reactants, Reaction.products, ReactionRate.rate])
     )
     needs_exp = (
         polars.concat_list(Reaction.reactants, Reaction.products)
@@ -1016,7 +1004,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
 
     if not has_rate:
         exp_rxn_df = reac_table.without_rates(exp_rxn_df)
-        exp_rxn_df = exp_rxn_df.drop(ReactionMisc.orig_rate)
+        exp_rxn_df = exp_rxn_df.drop(col_.orig(ReactionRate.rate))
 
     return from_data(
         rxn_inp=exp_rxn_df,

@@ -32,12 +32,6 @@ class SpeciesThermo(Model):
     thermo_string: str
 
 
-class SpeciesRenamed(Model):
-    """Renamed species table."""
-
-    orig_name: str
-
-
 class SpeciesStereo(Model):
     """Stereo-expanded species table."""
 
@@ -46,7 +40,7 @@ class SpeciesStereo(Model):
     orig_amchi: str
 
 
-SPECIES_MODELS = (Species, SpeciesThermo, SpeciesRenamed, SpeciesStereo)
+SPECIES_MODELS = (Species, SpeciesThermo, SpeciesStereo)
 
 
 # Reaction table schemas
@@ -73,13 +67,6 @@ class ReactionSorted(Model):
     channel: int
 
 
-class ReactionRenamed(Model):
-    """Renamed reaction table."""
-
-    orig_reactants: str
-    orig_products: str
-
-
 class ReactionStereo(Model):
     """Stereo-expanded reaction table."""
 
@@ -95,26 +82,13 @@ class ReactionCheck(Model):
     has_unbalanced_formula: bool
 
 
-class ReactionMisc(Model):
-    """Miscellaneous reaction columns (not for validation)."""
-
-    orig_rate: Struct
-
-
 class SpeciesMisc(Model):
     """Miscellaneous species columns (not for validation)."""
 
     orig_thermo_string: str
 
 
-REACTION_MODELS = (
-    Reaction,
-    ReactionRate,
-    ReactionRenamed,
-    ReactionStereo,
-    ReactionCheck,
-    ReactionMisc,
-)
+REACTION_MODELS = (Reaction, ReactionRate, ReactionStereo, ReactionCheck)
 
 
 # Error data structure

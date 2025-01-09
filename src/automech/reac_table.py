@@ -7,7 +7,7 @@ import more_itertools as mit
 import polars
 
 from . import data, schema
-from .schema import Reaction, ReactionMisc, ReactionRate
+from .schema import Reaction, ReactionRate
 from .util import df_
 
 DEFAULT_REAGENT_SEPARATOR = " + "
@@ -23,7 +23,7 @@ def update_rates(
     :param src_rxn_df: Reactions DataFrame with thermochemical data
     :return: reactions DataFrame
     """
-    rxn_df = rxn_df.rename({ReactionRate.rate: ReactionMisc.orig_rate}, strict=False)
+    rxn_df = rxn_df.rename(schema.col.to_orig(ReactionRate.rate), strict=False)
 
     if has_colliders(rxn_df):
         raise NotImplementedError(

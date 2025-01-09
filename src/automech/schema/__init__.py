@@ -1,5 +1,6 @@
 """DataFrame schema."""
 
+from . import col
 from ._core import (
     REACTION_MODELS,
     SPECIES_MODELS,
@@ -7,14 +8,11 @@ from ._core import (
     Model,
     Reaction,
     ReactionCheck,
-    ReactionMisc,
     ReactionRate,
-    ReactionRenamed,
     ReactionSorted,
     ReactionStereo,
     Species,
     SpeciesMisc,
-    SpeciesRenamed,
     SpeciesStereo,
     SpeciesThermo,
     columns,
@@ -35,16 +33,13 @@ __all__ = [
     # Species table schema
     "Species",
     "SpeciesMisc",
-    "SpeciesRenamed",
     "SpeciesStereo",
     "SpeciesThermo",
     "SPECIES_MODELS",
     # Reaction table schema
     "Reaction",
     "ReactionCheck",
-    "ReactionMisc",
     "ReactionRate",
-    "ReactionRenamed",
     "ReactionSorted",
     "ReactionStereo",
     "REACTION_MODELS",
@@ -62,4 +57,6 @@ __all__ = [
     "table_with_columns_from_models",
     "has_columns",
     "columns",
+    # submodules,
+    "col",
 ]
