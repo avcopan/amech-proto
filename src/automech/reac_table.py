@@ -34,7 +34,7 @@ def update_rates(
     rxn_df = with_reaction_key(rxn_df, col_name=col_key)
     src_rxn_df = with_reaction_key(src_rxn_df, col_name=col_key)
     rxn_df = rxn_df.join(src_rxn_df, how="left", on=col_key)
-    rxn_df = rxn_df.drop(col_key)
+    rxn_df = rxn_df.drop(col_key, polars.selectors.ends_with("_right"))
     rxn_df, *_ = schema.reaction_table(rxn_df, model_=ReactionRate)
     return rxn_df
 
