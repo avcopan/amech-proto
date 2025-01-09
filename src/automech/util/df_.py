@@ -88,7 +88,7 @@ def map_(
     func_: Callable,
     dct: dict[object, object] | None = None,
     dtype_: polars.DataType | Sequence[polars.DataType] | None = None,
-    bar: bool = True,
+    bar: bool = False,
 ) -> polars.DataFrame:
     """Map columns from a DataFrame onto a new column.
 

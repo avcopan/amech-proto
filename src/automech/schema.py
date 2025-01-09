@@ -217,10 +217,10 @@ def species_table(
             df = df.with_columns(polars.col(Species.smiles).str.replace(spin_type, ""))
 
     if Species.amchi not in df:
-        df = df_.map_(df, Species.smiles, Species.amchi, automol.smiles.amchi)
+        df = df_.map_(df, Species.smiles, Species.amchi, automol.smiles.amchi, bar=True)
 
     if Species.smiles not in df:
-        df = df_.map_(df, Species.amchi, Species.smiles, automol.amchi.smiles)
+        df = df_.map_(df, Species.amchi, Species.smiles, automol.amchi.smiles, bar=True)
 
     if Species.formula not in df:
         dt = dt_dct[Species.formula]

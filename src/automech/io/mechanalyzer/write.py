@@ -67,15 +67,18 @@ def species(
     """
     # Write species
     spc_df = mech_species(mech)
-    spc_df = df_.map_(spc_df, Species.amchi, MASpecies.inchi, automol.amchi.chi_)
     spc_df = df_.map_(
-        spc_df, MASpecies.inchi, MASpecies.inchikey, automol.chi.inchi_key
+        spc_df, Species.amchi, MASpecies.inchi, automol.amchi.chi_, bar=True
     )
-    spc_df: polars.DataFrame = df_.map_(
+    spc_df = df_.map_(
+        spc_df, MASpecies.inchi, MASpecies.inchikey, automol.chi.inchi_key, bar=True
+    )
+    spc_df = df_.map_(
         spc_df,
         MASpecies.inchi,
         MASpecies.canon_enant_ich,
         automol.amchi.canonical_enantiomer,
+        bar=True,
     )
     spc_df = spc_df.with_columns((polars.col(Species.spin) + 1).alias(MASpecies.mult))
     spc_df = table_with_columns_from_models(

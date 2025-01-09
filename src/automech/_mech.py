@@ -863,7 +863,7 @@ def expand_stereo(
         ReactionStereo.orig_products,
     )
     cols_out = (Reaction.reactants, Reaction.products, ReactionStereo.amchi)
-    rxn_df = df_.map_(rxn_df, cols_in, cols_out, _expand_reaction)
+    rxn_df = df_.map_(rxn_df, cols_in, cols_out, _expand_reaction, bar=True)
 
     # Separate out error cases
     err_df = rxn_df.filter(polars.col(Reaction.reactants).list.len() == 0)
@@ -912,7 +912,9 @@ def _expand_species_stereo(
         return automol.amchi.expand_stereo(chi, enant=enant)
 
     spc_df = spc_df.rename({Species.amchi: SpeciesStereo.orig_amchi})
-    spc_df = df_.map_(spc_df, SpeciesStereo.orig_amchi, Species.amchi, _expand_amchi)
+    spc_df = df_.map_(
+        spc_df, SpeciesStereo.orig_amchi, Species.amchi, _expand_amchi, bar=True
+    )
     spc_df = spc_df.explode(polars.col(Species.amchi))
 
     # Update species names
@@ -931,7 +933,7 @@ def _expand_species_stereo(
         return automol.amchi.smiles(chi)
 
     spc_df = spc_df.rename({Species.smiles: SpeciesStereo.orig_smiles})
-    spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles)
+    spc_df = df_.map_(spc_df, Species.amchi, Species.smiles, _stereo_smiles, bar=True)
     return spc_df
 
 
@@ -1008,7 +1010,7 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
 
     cols = [Reaction.reactants, Reaction.products, ReactionRate.rate]
     dtypes = list(map(polars.List, map(exp_rxn_df.schema.get, cols)))
-    exp_rxn_df = df_.map_(exp_rxn_df, cols, cols, _expand, dtype_=dtypes)
+    exp_rxn_df = df_.map_(exp_rxn_df, cols, cols, _expand, dtype_=dtypes, bar=True)
     exp_rxn_df: polars.DataFrame = exp_rxn_df.explode(cols)
     exp_rxn_df = polars.concat([rem_rxn_df, exp_rxn_df])
 
@@ -1037,11 +1039,11 @@ def drop_parent_reactions(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mecha
     # Form species mappings onto AMChIs without stereo
     par_spc_df = species(par_mech)
     sub_spc_df = species(exp_sub_mech)
-    par_spc_df: polars.DataFrame = df_.map_(
-        par_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo
+    par_spc_df = df_.map_(
+        par_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo, bar=True
     )
-    sub_spc_df: polars.DataFrame = df_.map_(
-        sub_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo
+    sub_spc_df = df_.map_(
+        sub_spc_df, Species.amchi, "amchi0", automol.amchi.without_stereo, bar=True
     )
     par_key_dct = df_.lookup_dict(par_spc_df, Species.name, "amchi0")
     sub_key_dct = df_.lookup_dict(sub_spc_df, Species.name, "amchi0")
