@@ -1,4 +1,4 @@
-"""DataFrame schemas."""
+"""DataFrame schema."""
 
 import itertools
 from collections.abc import Sequence
