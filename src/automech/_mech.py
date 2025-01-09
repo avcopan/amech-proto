@@ -784,6 +784,27 @@ def with_rates(mech: Mechanism) -> Mechanism:
     return set_reactions(mech, reac_table.with_rates(rxn_df))
 
 
+def with_match_key_column(
+    mech: Mechanism, spc_key: str = Species.name, col: str = "key"
+) -> tuple[Mechanism, Mechanism]:
+    """Add match key column for species and reactions.
+
+    Currently only accepts a single species key, but could be generalized to accept
+    more. The challenge would be in hashing the values.
+
+    :param mech1: First mechanism
+    :param spc_key: Species ID column for comparison
+    :param col: Output column identifying common species and reactions
+    :return: First and second Mechanisms with intersection columns
+    """
+    spc_df = species(mech).with_columns(polars.col(spc_key).alias(col))
+
+    # Create dictionaries for mapping species names to keys
+    spc_dct = df_.lookup_dict(spc_df, Species.name, spc_key)
+    rxn_df = reac_table.with_reaction_key(reactions(mech), col, spc_key_dct=spc_dct)
+    return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
+
+
 def expand_stereo(
     mech: Mechanism,
     enant: bool = True,
@@ -994,6 +1015,45 @@ def difference(
     return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
 
 
+def update(
+    mech1: Mechanism,
+    mech2: Mechanism,
+    spc_key: str = Species.name,
+    spc_key2: str | None = None,
+) -> tuple[Mechanism, Mechanism]:
+    """Update one mechanism with species and reactions from another.
+
+    Any overlapping species or reactions will be replaced with those of the second
+    mechanism.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :param spc_key: Species ID column for comparison
+    :param spc_key2: Second mechanism species ID column, if different
+    :return: Updated mechanism
+    """
+    # Use the rate units of the first mechanism
+    mech2 = set_rate_units(mech2, units=rate_units(mech1))
+
+    # Get intersection information for the first mechanism
+    tmp_col = df_.temp_column()
+    mech1, _ = with_intersection_columns(
+        mech1, mech2, spc_key=spc_key, spc_key2=spc_key2, col=tmp_col
+    )
+
+    # Determine combined reactions table
+    rxn_df1 = reactions(mech1).filter(~polars.col(tmp_col)).drop(tmp_col)
+    rxn_df2 = reactions(mech2)
+    rxn_df = polars.concat([rxn_df1, rxn_df2], how="diagonal_relaxed")
+
+    # Determine combined species table
+    spc_df1 = species(mech1).filter(~polars.col(tmp_col)).drop(tmp_col)
+    spc_df2 = species(mech2)
+    spc_df = polars.concat([spc_df1, spc_df2], how="diagonal_relaxed")
+
+    return update_data(mech1, rxn_df=rxn_df, spc_df=spc_df)
+
+
 def with_intersection_columns(
     mech1: Mechanism,
     mech2: Mechanism,
@@ -1012,26 +1072,25 @@ def with_intersection_columns(
     """
     spc_key2 = spc_key if spc_key2 is None else spc_key2
 
+    tmp_col = df_.temp_column()
+    mech1 = with_match_key_column(mech1, spc_key=spc_key, col=tmp_col)
+    mech2 = with_match_key_column(mech2, spc_key=spc_key2, col=tmp_col)
+
     # Determine species intersection
     spc_df1, spc_df2 = map(species, (mech1, mech2))
     spc_df1, spc_df2 = df_.with_intersection_columns(
-        spc_df1, spc_df2, comp_col_=spc_key, comp_col2_=spc_key2, col=col
+        spc_df1, spc_df2, comp_col_=tmp_col, col=col
     )
 
-    # Create dictionaries for mapping species names to keys
-    spc_dct1 = df_.lookup_dict(spc_df1, Species.name, spc_key)
-    spc_dct2 = df_.lookup_dict(spc_df2, Species.name, spc_key2)
-
     # Determine reaction intersection
-    tmp_col = df_.temp_column()
     rxn_df1, rxn_df2 = map(reactions, (mech1, mech2))
-    rxn_df1 = reac_table.with_reaction_key(rxn_df1, tmp_col, spc_key_dct=spc_dct1)
-    rxn_df2 = reac_table.with_reaction_key(rxn_df2, tmp_col, spc_key_dct=spc_dct2)
     rxn_df1, rxn_df2 = df_.with_intersection_columns(
         rxn_df1, rxn_df2, comp_col_=tmp_col, col=col
     )
-    rxn_df1 = rxn_df1.drop(tmp_col)
-    rxn_df2 = rxn_df2.drop(tmp_col)
+
+    # Drop temporary columns
+    spc_df1, spc_df2 = (df.drop(tmp_col) for df in (spc_df1, spc_df2))
+    rxn_df1, rxn_df2 = (df.drop(tmp_col) for df in (rxn_df1, rxn_df2))
 
     # Return the updated mechanisms
     mech1 = update_data(mech1, rxn_df=rxn_df1, spc_df=spc_df1)
@@ -1064,7 +1123,6 @@ def expand_parent_stereo(par_mech: Mechanism, exp_sub_mech: Mechanism) -> Mechan
     sub_spc_df = schema.species_table(sub_spc_df, model_=SpeciesStereo)
     sub_spc_df = sub_spc_df.select(*col_dct.keys(), *col_dct.values())
     sub_spc_df = sub_spc_df.group_by(col_.orig(Species.name)).agg(polars.all())
-    sub_spc_df = sub_spc_df.filter(polars.col(Species.name).list.len() > 1)
 
     #   c. Form species expansion dictionary, to be used for reaction expansion
     exp_dct: dict[str, list[str]] = df_.lookup_dict(
