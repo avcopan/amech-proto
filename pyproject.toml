@@ -67,9 +67,14 @@ myst-parser = "*"
 sphinx-book-theme = "*"
 sphinx-autodoc-typehints = "*"
 
+[tool.pixi.feature.sim.dependencies]
+cantera = "*"
+altair-all = "*"
+
 [tool.pixi.environments]
 default = { features = [], solve-group = "default"}
 dev = {features = ["test", "lint", "docs"], solve-group = "default"}
+sim = {features = ["test", "lint", "docs", "sim"], solve-group = "default"}
 
 # Linting
 [tool.black]

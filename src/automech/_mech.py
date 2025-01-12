@@ -46,10 +46,10 @@ class Mechanism:
             self.rate_units = tuple(map(str, self.rate_units))
 
         if not isinstance(self.reactions, polars.DataFrame):
-            self.reactions = polars.DataFrame(self.reactions)
+            self.reactions = polars.DataFrame(self.reactions, infer_schema_length=None)
 
         if not isinstance(self.species, polars.DataFrame):
-            self.species = polars.DataFrame(self.species)
+            self.species = polars.DataFrame(self.species, infer_schema_length=None)
 
         self.species = schema.species_table(self.species)
         self.reactions, _ = schema.reaction_table(self.reactions, spc_df=self.species)
@@ -890,6 +890,7 @@ def expand_stereo(
         dict(map(reversed, col_dct.items()))
     )
     rxn_df = rxn_df.explode(Reaction.reactants, Reaction.products, ReactionStereo.amchi)
+    rxn_df = rxn_df.drop("ramchis", "pamchis")
 
     # Form new mechanisms
     mech = from_data(
@@ -1020,7 +1021,7 @@ def update(
     mech2: Mechanism,
     spc_key: str = Species.name,
     spc_key2: str | None = None,
-) -> tuple[Mechanism, Mechanism]:
+) -> Mechanism:
     """Update one mechanism with species and reactions from another.
 
     Any overlapping species or reactions will be replaced with those of the second
