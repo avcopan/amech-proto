@@ -8,6 +8,8 @@ from pathlib import Path
 import polars
 from tqdm.auto import tqdm
 
+from . import col_ as m_col_
+
 Key = str
 Keys = Sequence[str]
 Key_ = Key | Keys
@@ -35,11 +37,71 @@ def with_index(df: polars.DataFrame, col: str = "index") -> polars.DataFrame:
     return df.with_row_index(name=col)
 
 
+def left_update(
+    df1: polars.DataFrame,
+    df2: polars.DataFrame,
+    col_: str | Sequence[str],
+    drop_orig: bool = False,
+) -> polars.DataFrame:
+    """Left-update one DataFrame by another.
+
+    :param df1: First DataFrame
+    :param df2: Second DataFrame
+    :param col_: Column(s) to join on
+    :param drop_orig: Whether to drop the original column values
+    :return: DataFrame
+    """
+    col_ = [col_] if isinstance(col_, str) else col_
+
+    # Form join columns (needed if multiple are used)
+    tmp_col = temp_column()
+    df1 = with_concat_string_column(df1, tmp_col, col_)
+    df2 = with_concat_string_column(df2, tmp_col, col_)
+
+    # Identify column name clashes
+    clash_cols = set(df1.columns) & set(df2.columns) - {tmp_col}
+    clash_dct = m_col_.to_orig(clash_cols)
+
+    # Rename to avoid clashes and join
+    df1 = df1.rename(clash_dct)
+    df1 = df1.join(df2, tmp_col, how="left")
+
+    # Fill nulls from join with their original values
+    df1 = df1.with_columns(
+        *(polars.col(c).fill_null(polars.col(o)) for c, o in clash_dct.items())
+    )
+    df1 = df1.drop(tmp_col)
+
+    # If requested, drop the `orig` column values
+    if drop_orig:
+        df1 = df1.drop(clash_dct.values(), strict=False)
+
+    return df1
+
+
+def with_concat_string_column(
+    df: polars.DataFrame, col: str, src_col_: str | Sequence[str], col_sep: str = "_"
+) -> polars.DataFrame:
+    """Add a column concatenating other columns as strings.
+
+    :param df: DataFrame
+    :param col: Column name
+    :param src_col_: Source column name(s)
+    :param col_sep: Column separator
+    :return: DataFrame
+    """
+    return df.with_columns(
+        polars.concat_str(
+            *(polars.col(c).cast(polars.String) for c in src_col_), separator=col_sep
+        ).alias(col)
+    )
+
+
 def with_intersection_columns(
     df1: polars.DataFrame,
     df2: polars.DataFrame,
-    comp_col_: str | list[str],
-    comp_col2_: str | list[str] | None = None,
+    comp_col_: str | Sequence[str],
+    comp_col2_: str | Sequence[str] | None = None,
     col: str = "intersection",
 ) -> tuple[polars.DataFrame, polars.DataFrame]:
     """Add columns to DataFrame pair indicating their intersection.
@@ -64,8 +126,8 @@ def with_intersection_columns(
 def with_intersection_column(
     df1: polars.DataFrame,
     df2: polars.DataFrame,
-    comp_col_: str | list[str],
-    comp_col2_: str | list[str] | None = None,
+    comp_col_: str | Sequence[str],
+    comp_col2_: str | Sequence[str] | None = None,
     col: str = "intersection",
 ) -> polars.DataFrame:
     """Add a column indicating intersection with another DataFrame.

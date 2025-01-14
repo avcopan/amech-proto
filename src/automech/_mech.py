@@ -22,8 +22,7 @@ from .schema import (
     SpeciesStereo,
     SpeciesThermo,
 )
-from .schema import col as col_
-from .util import df_
+from .util import col_, df_
 
 
 @dataclasses.dataclass
@@ -77,8 +76,8 @@ class Mechanism:
 
 # constructors
 def from_data(
-    rxn_inp: str | polars.DataFrame,
-    spc_inp: str | polars.DataFrame,
+    rxn_inp: str | polars.DataFrame | None = None,
+    spc_inp: str | polars.DataFrame | None = None,
     thermo_temps: tuple[float, float, float] | None = None,
     rate_units: tuple[str, str] | None = None,
     rxn_models: Sequence[Model] = (),
@@ -94,6 +93,17 @@ def from_data(
     :param fail_on_error: Whether to raise exception if there is inconsistency
     :return: Mechanism object
     """
+    spc_inp = (
+        polars.DataFrame([], schema=schema.types(Species))
+        if spc_inp is None
+        else spc_inp
+    )
+    rxn_inp = (
+        polars.DataFrame([], schema=schema.types(Species))
+        if rxn_inp is None
+        else rxn_inp
+    )
+
     spc_df = spc_inp if isinstance(spc_inp, polars.DataFrame) else df_.from_csv(spc_inp)
     rxn_df = rxn_inp if isinstance(rxn_inp, polars.DataFrame) else df_.from_csv(rxn_inp)
     spc_df = schema.species_table(spc_df, model_=spc_models)
@@ -149,6 +159,7 @@ def from_smiles(
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
+    src_mech: Mechanism | None = None,
 ) -> Mechanism:
     """Generate mechanism using SMILES strings for species names.
 
@@ -159,6 +170,7 @@ def from_smiles(
     :param name_dct: Optionally, specify name for some molecules
     :param spin_dct: Optionally, specify spin state (2S) for some molecules
     :param charge_dct: Optionally, specify charge for some molecules
+    :param src_mech: Optional source mechanism for species names
     :return: Mechanism
     """
     name_dct = {} if name_dct is None else name_dct
@@ -185,6 +197,10 @@ def from_smiles(
         spc_df, name_dct=name_dct, spin_dct=spin_dct, charge_dct=charge_dct
     )
 
+    # Left-update by species key, if source mechanism was provided
+    if src_mech is not None:
+        spc_df = spec_table.left_update(spc_df, species(src_mech), drop_orig=True)
+
     # Build reactions dataframe
     trans_dct = df_.lookup_dict(spc_df, Species.smiles, Species.name)
     rxn_smis_lst = list(map(automol.smiles.reaction_reactants_and_products, rxn_smis))
@@ -197,6 +213,10 @@ def from_smiles(
     ]
     dt = schema.reaction_types([Reaction.reactants, Reaction.products])
     rxn_df = polars.DataFrame(data=data_lst, schema=dt)
+
+    # Left-update by reaction key, if source mechanism was provided
+    if src_mech is not None:
+        rxn_df = reac_table.left_update(rxn_df, reactions(src_mech), drop_orig=True)
     return from_data(rxn_df, spc_df)
 
 
@@ -602,38 +622,31 @@ def apply_network_function(
 
 # transformations
 def rename(
-    mech: Mechanism, name_dct: dict[str, str], drop_missing: bool = False
+    mech: Mechanism,
+    names: Sequence[str] | Mapping[str, str],
+    new_names: Sequence[str] | None = None,
+    drop_orig: bool = False,
+    drop_missing: bool = False,
 ) -> Mechanism:
     """Rename species in mechanism.
 
     :param mech: Mechanism
-    :param name_dct: Dictionary mapping current species names to new species names
-    :param drop_missing: Drop missing species from mechanism? Otherwise, they are
-        retained with their original names
+    :param names: A list of names or mapping from current to new names
+    :param new_names: A list of new names
+    :param drop_orig: Whether to drop the original names, or include them as `orig`
+    :param drop_missing: Whether to drop missing species or keep them
     :return: Mechanism with updated species names
     """
     if drop_missing:
-        mech = with_species(mech, list(name_dct), strict=drop_missing)
+        mech = with_species(mech, list(names), strict=drop_missing)
 
-    spc_df = species(mech)
-    spc_df = spc_df.with_columns(polars.col(Species.name).replace(name_dct))
-
-    rxn_df = reactions(mech)
-    rxn_df = rxn_df.with_columns(
-        **col_.from_orig([Reaction.reactants, Reaction.products])
+    spc_df = spec_table.rename(
+        species(mech), names=names, new_names=new_names, drop_orig=drop_orig
     )
-
-    repl_expr = polars.element().replace(name_dct)
-    rxn_df = rxn_df.with_columns(
-        polars.col(Reaction.reactants).list.eval(repl_expr),
-        polars.col(Reaction.products).list.eval(repl_expr),
+    rxn_df = reac_table.rename(
+        reactions(mech), names=names, new_names=new_names, drop_orig=drop_orig
     )
-    return from_data(
-        rxn_inp=rxn_df,
-        spc_inp=spc_df,
-        thermo_temps=thermo_temperatures(mech),
-        rate_units=rate_units(mech),
-    )
+    return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
 
 
 def remove_all_reactions(mech: Mechanism) -> Mechanism:
@@ -1055,6 +1068,27 @@ def update(
     return update_data(mech1, rxn_df=rxn_df, spc_df=spc_df)
 
 
+def left_update(mech1: Mechanism, mech2: Mechanism) -> Mechanism:
+    """Update one mechanism with names and data from another.
+
+    Any overlapping species or reactions will be replaced with those of the second
+    mechanism.
+
+    :param mech1: First mechanism
+    :param mech2: Second mechanism
+    :return: Mechanism
+    """
+    # Use the rate units of the second mechanism
+    mech1 = set_rate_units(mech1, units=rate_units(mech2))
+
+    spc_df = species(mech1)
+    reactions(mech1)
+
+    spc_df = spec_table.left_update(spc_df, species(mech2), drop_orig=False)
+
+    # rxn_df = rename()
+
+
 def with_intersection_columns(
     mech1: Mechanism,
     mech2: Mechanism,
@@ -1278,6 +1312,28 @@ def update_parent_reaction_data(
 
 # building
 ReagentValue_ = str | Sequence[str] | None
+
+
+def enumerate_reactions(
+    mech: Mechanism,
+    smarts: str,
+    rcts_: Sequence[ReagentValue_] | Mapping[int, ReagentValue_] | None = None,
+    spc_key_: str | Sequence[str] = Species.name,
+    src_mech: Mechanism | None = None,
+) -> Mechanism:
+    """Enumerate reactions for mechanism based on SMARTS reaction template.
+
+    Reactants can be specified as lists or dictionaries by position in the SMARTS
+    template. If unspecified, all species in the mechanism will be used.
+
+    :param mech: Mechanism
+    :param smarts: SMARTS reaction template
+    :param rcts_: Reactants to be used in enumeration
+    :param key_: Species column key(s) for identifying reactants and products
+    :param src_mech: Optional source mechanism for species names and data
+    :return: Mechanism with enumerated reactions
+    """
+    raise NotImplementedError(mech, smarts, rcts_, spc_key_, src_mech)
 
 
 def enumerate_reactions_from_smarts(

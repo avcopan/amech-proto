@@ -1,20 +1,49 @@
 """Functions acting on species DataFrames."""
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import automol
 import polars
 
 from . import schema
 from .schema import Species, SpeciesMisc, SpeciesThermo
-from .util import df_
+from .util import col_, df_
+
+m_col_ = col_
+
+SPECIES_KEY_COLS = (Species.amchi, Species.spin, Species.charge)
 
 
 # update
-def update_thermo(
+def left_update(
+    spc_df: polars.DataFrame,
+    src_spc_df: polars.DataFrame,
+    key_col_: str | Sequence[str] = SPECIES_KEY_COLS,
+    drop_orig: bool = False,
+) -> polars.DataFrame:
+    """Left-update species data by species key.
+
+    :param spc_df: Species DataFrame
+    :param src_spc_df: Source species DataFrame
+    :param key_col_: Species key column(s)
+    :param drop_orig: Whether to drop the original column values
+    :return: Species DataFrame
+    """
+    # Update
+    spc_df = df_.left_update(spc_df, src_spc_df, col_=key_col_, drop_orig=drop_orig)
+
+    # Drop unnecessary columns
+    drop_cols = [m_col_.orig(c) for c in schema.columns(Species) if c != Species.name]
+    spc_df = spc_df.drop(drop_cols, strict=False)
+    return spc_df
+
+
+def left_update_thermo(
     spc_df: polars.DataFrame, src_spc_df: polars.DataFrame
 ) -> polars.DataFrame:
     """Read thermochemical data from one dataframe into another.
+
+    (AVC note: I think this can be deprecated...)
 
     :param spc_df: Species DataFrame
     :param src_spc_df: Species DataFrame with thermochemical data
@@ -25,6 +54,48 @@ def update_thermo(
     )
     spc_df = spc_df.join(src_spc_df, how="left", on=Species.name)
     return schema.species_table(spc_df, model_=SpeciesThermo)
+
+
+# add columns
+def with_species_key(
+    spc_df: polars.DataFrame,
+    col: str = "key",
+    key_col_: str | Sequence[str] = SPECIES_KEY_COLS,
+) -> polars.DataFrame:
+    """Add a key for identifying unique species.
+
+    The key is "{AMChI}_{spin}_{charge}"
+
+    :param spc_df: Species DataFrame
+    :param col: Column name, defaults to "key"
+    :return: Species DataFrame
+    """
+    return df_.with_concat_string_column(spc_df, col=col, src_col_=key_col_)
+
+
+# tranform
+def rename(
+    spc_df: polars.DataFrame,
+    names: Sequence[str] | Mapping[str, str],
+    new_names: Sequence[str] | None = None,
+    drop_orig: bool = False,
+) -> polars.DataFrame:
+    """Rename species in a species DataFrame.
+
+    :param rxn_df: Species DataFrame
+    :param names: A list of names or mapping from current to new names
+    :param new_names: A list of new names
+    :param drop_orig: Whether to drop the original names, or include them as `orig`
+    :return: Species DataFrame
+    """
+    col_dct = col_.to_orig(Species.name)
+    spc_df = spc_df.with_columns(polars.col(c0).alias(c) for c0, c in col_dct.items())
+    expr = polars.col(Species.name)
+    expr = expr.replace(names) if new_names is None else expr.replace(names, new_names)
+    spc_df = spc_df.with_columns(expr)
+    if drop_orig:
+        spc_df = spc_df.drop(col_dct.values())
+    return spc_df
 
 
 # sort

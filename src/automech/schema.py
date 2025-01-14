@@ -4,6 +4,7 @@ import itertools
 from collections.abc import Sequence
 
 import automol
+import more_itertools as mit
 import pandera.polars as pa
 import polars
 from polars.datatypes import Struct
@@ -110,8 +111,22 @@ class Errors(BaseModel):
         )
 
 
+def columns(model_: Model | Sequence[Model]) -> dict[str, type]:
+    """Get column names.
+
+    :param model_: Model(s)
+    :return: The schema, as a mapping of column names to types
+    """
+    model_ = model_ if isinstance(model_, Sequence) else [model_]
+    return list(
+        mit.unique_everseen(
+            itertools.chain.from_iterable(m.to_schema().columns for m in model_)
+        )
+    )
+
+
 def types(
-    models: Sequence[Model], keys: Sequence[str] | None = None
+    model_: Model | Sequence[Model], keys: Sequence[str] | None = None
 ) -> dict[str, type]:
     """Get a dictionary mapping column names to type names.
 
@@ -119,10 +134,11 @@ def types(
     :param keys: Optionally, specify keys to include in the schema
     :return: The schema, as a mapping of column names to types
     """
+    model_ = model_ if isinstance(model_, Sequence) else [model_]
     keys = None if keys is None else list(keys)
 
     type_dct = {}
-    for model in models:
+    for model in model_:
         type_dct.update({k: v.dtype.type for k, v in model.to_schema().columns.items()})
 
     if keys is not None:
@@ -151,7 +167,7 @@ def reaction_types(keys: Sequence[str] | None = None) -> dict[str, type]:
 
 def species_table(
     df: polars.DataFrame,
-    model_: Sequence[Model] = (),
+    model_: Model | Sequence[Model] = (),
     name_dct: dict[str, str] | None = None,
     spin_dct: dict[str, int] | None = None,
     charge_dct: dict[str, int] | None = None,
@@ -250,7 +266,7 @@ def species_table(
 
 def reaction_table(
     df: polars.DataFrame,
-    model_: Sequence[Model] = (),
+    model_: Model | Sequence[Model] = (),
     spc_df: polars.DataFrame | None = None,
     keep_extra: bool = True,
     fail_on_error: bool = True,

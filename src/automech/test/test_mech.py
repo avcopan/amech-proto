@@ -232,7 +232,7 @@ if __name__ == "__main__":
     # test__expand_stereo(MECH_BUTENE, 6, 8, 1, 3, True)
     # test__expand_stereo(MECH_NO_REACIONS, 0, 2, 0, 2, False)
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
-    # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
+    test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
     # test__network(MECH_NO_REACIONS)
@@ -246,14 +246,14 @@ if __name__ == "__main__":
     #     5,
     #     9,
     # )
-    test__with_sort_data(
-        MECH_ETHANE,
-        {
-            0: (1, 1, 1),
-            1: (2, 1, 1),
-            2: (2, 1, 2),
-            3: (2, 1, 3),
-            4: (2, 1, 4),
-            5: (3, 1, 1),
-        },
-    )
+    # test__with_sort_data(
+    #     MECH_ETHANE,
+    #     {
+    #         0: (1, 1, 1),
+    #         1: (2, 1, 1),
+    #         2: (2, 1, 2),
+    #         3: (2, 1, 3),
+    #         4: (2, 1, 4),
+    #         5: (3, 1, 1),
+    #     },
+    # )

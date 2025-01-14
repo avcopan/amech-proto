@@ -259,7 +259,7 @@ def thermo(
     }
     therm_df = polars.DataFrame(data)
     if spc_df is not None:
-        therm_df = spec_table.update_thermo(spc_df, therm_df)
+        therm_df = spec_table.left_update_thermo(spc_df, therm_df)
 
     df_.to_csv(therm_df, out)
 

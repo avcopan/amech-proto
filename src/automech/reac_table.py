@@ -9,22 +9,54 @@ import polars
 
 from . import data, schema
 from .schema import Reaction, ReactionRate
-from .util import df_
+from .util import col_, df_
+
+m_col_ = col_
 
 DEFAULT_REAGENT_SEPARATOR = " + "
 
 
 # update
-def update_rates(
+def left_update(
+    rxn_df: polars.DataFrame,
+    src_rxn_df: polars.DataFrame,
+    drop_orig: bool = False,
+) -> polars.DataFrame:
+    """Left-update reaction data by reaction key.
+
+    :param rxn_df: reaction DataFrame
+    :param src_rxn_df: Source reaction DataFrame
+    :param drop_orig: Whether to drop original column values
+    :return: Reaction DataFrame
+    """
+    drop_cols = m_col_.orig(schema.columns(Reaction))
+
+    # Add reaction keys
+    tmp_col = df_.temp_column()
+    rxn_df = with_reaction_key(rxn_df, tmp_col)
+    src_rxn_df = with_reaction_key(src_rxn_df, tmp_col)
+
+    # Update
+    rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
+
+    # Drop unnecessary columns
+    rxn_df = rxn_df.drop(tmp_col, *drop_cols, strict=False)
+    return rxn_df
+
+
+def left_update_rates(
     rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame
 ) -> polars.DataFrame:
     """Read thermochemical data from one dataframe into another.
+
+    (AVC note: I think this can be deprecated and replaced with the more general
+    function above...)
 
     :param rxn_df: Reactions DataFrame
     :param src_rxn_df: Reactions DataFrame with thermochemical data
     :return: reactions DataFrame
     """
-    rxn_df = rxn_df.rename(schema.col.to_orig(ReactionRate.rate), strict=False)
+    rxn_df = rxn_df.rename(col_.to_orig(ReactionRate.rate), strict=False)
 
     if has_colliders(rxn_df):
         raise NotImplementedError(
@@ -86,7 +118,38 @@ def reagent_strings(
     return [sep.join(r) for r in reagents(rxn_df)]
 
 
-# transformations
+# add columns
+def with_reaction_key(
+    rxn_df: polars.DataFrame,
+    col: str = "key",
+    spc_key_dct: dict[str, object] | None = None,
+) -> polars.DataFrame:
+    """Add a key for identifying unique reactions to this DataFrame.
+
+    The key is formed by sorting reactants and products and then sorting the direction
+    of the reaction.
+
+        id = string join(sorted([sorted(rcts), sorted(prds)]))
+
+    By default, this uses the species names, but a dictionary can be passed in to
+    translate these into other species identifiers.
+
+    :param rxn_df: A reactions DataFrame
+    :param col: The column name
+    :param spc_key_dct: A dictionary mapping species names onto unique species keys
+    :return: A reactions DataFrame with this key as a new column
+    """
+
+    def _key(rcts, prds):
+        if spc_key_dct is not None:
+            rcts = list(map(spc_key_dct.get, rcts))
+            prds = list(map(spc_key_dct.get, prds))
+        rcts, prds = sorted([sorted(rcts), sorted(prds)])
+        return data.reac.write_chemkin_equation(rcts, prds)
+
+    return df_.map_(rxn_df, (Reaction.reactants, Reaction.products), col, _key)
+
+
 def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     """Add placeholder rate data to this DataFrame, if missing.
 
@@ -161,35 +224,26 @@ def with_reagent_strings_column(
     )
 
 
-def with_reaction_key(
+def rename(
     rxn_df: polars.DataFrame,
-    col: str = "key",
-    spc_key_dct: dict[str, object] | None = None,
+    names: Sequence[str] | Mapping[str, str],
+    new_names: Sequence[str] | None = None,
+    drop_orig: bool = False,
 ) -> polars.DataFrame:
-    """Add a key for identifying unique reactions to this DataFrame.
+    """Rename species in a reactions DataFrame.
 
-    The key is formed by sorting reactants and products and then sorting the direction
-    of the reaction.
-
-        id = hash(sorted([sorted(rcts), sorted(prds)]))
-
-    By default, this uses the species names, but a dictionary can be passed in to
-    translate these into other species identifiers.
-
-    :param rxn_df: A reactions DataFrame
-    :param col: The column name
-    :param spc_key_dct: A dictionary mapping species names onto unique species keys
-    :return: A reactions DataFrame with this key as a new column
+    :param rxn_df: Reactions DataFrame
+    :param names: A list of names or mapping from current to new names
+    :param new_names: A list of new names
+    :param drop_orig: Whether to drop the original names, or include them as `orig`
+    :return: Reactions DataFrame
     """
-
-    def _key(rcts, prds):
-        if spc_key_dct is not None:
-            rcts = list(map(spc_key_dct.get, rcts))
-            prds = list(map(spc_key_dct.get, prds))
-        rcts, prds = sorted([sorted(rcts), sorted(prds)])
-        return data.reac.write_chemkin_equation(rcts, prds)
-
-    return df_.map_(rxn_df, (Reaction.reactants, Reaction.products), col, _key)
+    col_dct = col_.to_orig([Reaction.reactants, Reaction.products])
+    rxn_df = rxn_df.with_columns(polars.col(c0).alias(c) for c0, c in col_dct.items())
+    rxn_df = translate_reagents(rxn_df=rxn_df, trans=names, trans_into=new_names)
+    if drop_orig:
+        rxn_df = rxn_df.drop(col_dct.values())
+    return rxn_df
 
 
 def translate_reagents(
@@ -209,17 +263,15 @@ def translate_reagents(
     :param prd_col: The column name to use for the products
     :return: The updated reactions DataFrame
     """
-
-    def _translate(col_in: str, col_out: str) -> polars.Expr:
-        return (
-            polars.col(col_in)
-            .list.eval(polars.element().replace(old=trans, new=trans_into))
-            .alias(col_out)
-        )
+    expr = (
+        polars.element().replace(trans)
+        if trans_into is None
+        else polars.element().replace(trans, trans_into)
+    )
 
     return rxn_df.with_columns(
-        _translate(Reaction.reactants, rct_col),
-        _translate(Reaction.products, prd_col),
+        polars.col(Reaction.reactants).list.eval(expr).alias(rct_col),
+        polars.col(Reaction.products).list.eval(expr).alias(prd_col),
     )
 
 
