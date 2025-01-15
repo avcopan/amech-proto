@@ -1,11 +1,10 @@
 """DataFrame utilities."""
 
-import random
-import string
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import polars
+import polars.dataframe
 from tqdm.auto import tqdm
 
 from . import col_ as m_col_
@@ -17,6 +16,9 @@ Value = object
 Values = Sequence[object]
 Value_ = Value | Values
 
+DEFAULT_COL_SEP = "_"
+DEFAULT_LIST_SEP = ","
+
 
 def count(df: polars.DataFrame) -> int:
     """Count the number of rows in a DataFrame.
@@ -25,6 +27,41 @@ def count(df: polars.DataFrame) -> int:
     :return: The number of rows
     """
     return df.select(polars.len()).item()
+
+
+def values(
+    df: polars.DataFrame,
+    col_: str | Sequence[str],
+    vals_in_: Sequence[object | Sequence[object]] | None = None,
+    col_in_: str | Sequence[str] | None = None,
+) -> list[object | tuple[object, ...]]:
+    """Get values from a DataFrame.
+
+    :param df: DataFrame
+    :param col_: Column(s) to get value(s) for
+    :param vals_in_: Optionally, get value(s) for rows matching these input value(s)
+    :param col_in_: Column(s) corresponding to `vals_in_`
+    :return: _description_
+    """
+    is_bare = m_col_.is_bare_column_argument(col_)
+    col_ = m_col_.normalize_column_argument(col_)
+
+    # If no input value(s) were given, return output value(s) for all rows
+    if vals_in_ is None or col_in_ is None:
+        assert vals_in_ is None and col_in_ is None, f"{vals_in_} {col_in_}"
+        return list(df.select(*col_).rows())
+
+    vals_in_, col_in_ = normalize_values_arguments(vals_in_, col_in_)
+
+    idx_col = m_col_.temp()
+    df = with_match_index_column(df, idx_col, vals_=vals_in_, col_=col_in_)
+    df = df.filter(polars.col(idx_col).is_not_null()).unique(idx_col)
+    miss_idxs = [i for i, _ in enumerate(vals_in_) if i not in df.get_column(idx_col)]
+    miss_df = polars.DataFrame({idx_col: miss_idxs})
+    df = polars.concat([df, miss_df], how="diagonal_relaxed")
+    df = df.sort(idx_col)
+    vals_ = df.select(*col_).rows()
+    return [v[0] for v in vals_] if is_bare else vals_
 
 
 def with_index(df: polars.DataFrame, col: str = "index") -> polars.DataFrame:
@@ -41,7 +78,7 @@ def left_update(
     df1: polars.DataFrame,
     df2: polars.DataFrame,
     col_: str | Sequence[str],
-    drop_orig: bool = False,
+    drop_orig: bool = True,
 ) -> polars.DataFrame:
     """Left-update one DataFrame by another.
 
@@ -51,16 +88,16 @@ def left_update(
     :param drop_orig: Whether to drop the original column values
     :return: DataFrame
     """
-    col_ = [col_] if isinstance(col_, str) else col_
+    col_ = m_col_.normalize_column_argument(col_)
 
     # Form join columns (needed if multiple are used)
-    tmp_col = temp_column()
+    tmp_col = m_col_.temp()
     df1 = with_concat_string_column(df1, tmp_col, col_)
     df2 = with_concat_string_column(df2, tmp_col, col_)
 
     # Identify column name clashes
     clash_cols = set(df1.columns) & set(df2.columns) - {tmp_col}
-    clash_dct = m_col_.to_orig(clash_cols)
+    clash_dct = m_col_.to_(clash_cols, m_col_.temp())
 
     # Rename to avoid clashes and join
     df1 = df1.rename(clash_dct)
@@ -68,21 +105,65 @@ def left_update(
 
     # Fill nulls from join with their original values
     df1 = df1.with_columns(
-        *(polars.col(c).fill_null(polars.col(o)) for c, o in clash_dct.items())
+        *(polars.col(c0).fill_null(polars.col(c)) for c0, c in clash_dct.items())
     )
     df1 = df1.drop(tmp_col)
 
     # If requested, drop the `orig` column values
     if drop_orig:
-        df1 = df1.drop(clash_dct.values(), strict=False)
+        df1 = df1.drop(clash_dct.values(), strict=True)
+    else:
+        orig_dct = {c: m_col_.orig(c0) for c0, c in clash_dct.items()}
+        df1 = df1.drop(orig_dct.values(), strict=False)
+        df1 = df1.rename(orig_dct)
 
     return df1
 
 
+def with_match_index_column(
+    df: polars.DataFrame,
+    col: str,
+    vals_: Sequence[object | Sequence[object]],
+    col_: str | Sequence[str],
+) -> polars.DataFrame:
+    """Add match index column for values in a list.
+
+    Requires that all column values be convertible to strings.
+
+    :param df: DataFrame
+    :param col: Column name
+    :param vals_: Column value(s) to match
+    :param col_: Column name(s) corresponding to `vals_`
+    :return: DataFrame
+    """
+    vals_, col_ = normalize_values_arguments(vals_, col_)
+
+    tmp_col = m_col_.temp()
+
+    # Form DataFrame with concatenated values and indices
+    val_data = dict(zip(col_, zip(*vals_, strict=True), strict=True))
+    val_df = polars.DataFrame(val_data)
+    val_df = with_concat_string_column(val_df, tmp_col, col_=col_)
+    val_df = with_index(val_df, col)
+    val_df = val_df.drop(*col_)
+
+    # Add concatenated values and join to get match indices
+    df = with_concat_string_column(df, tmp_col, col_=col_)
+    df = df.join(val_df, on=tmp_col, how="left")
+    return df.drop(tmp_col)
+
+
 def with_concat_string_column(
-    df: polars.DataFrame, col: str, src_col_: str | Sequence[str], col_sep: str = "_"
+    df: polars.DataFrame,
+    col_out: str,
+    col_: str | Sequence[str],
+    col_sep: str = DEFAULT_COL_SEP,
+    list_sep: str = DEFAULT_LIST_SEP,
 ) -> polars.DataFrame:
     """Add a column concatenating other columns as strings.
+
+    (AVC note: Could be extended by adding a distinct separator for lists, along with
+    sorting options.)
 
     :param df: DataFrame
     :param col: Column name
@@ -90,11 +171,49 @@ def with_concat_string_column(
     :param col_sep: Column separator
     :return: DataFrame
     """
-    return df.with_columns(
-        polars.concat_str(
-            *(polars.col(c).cast(polars.String) for c in src_col_), separator=col_sep
-        ).alias(col)
+    exprs = [concat_string_column_expression(df, c, list_sep=list_sep) for c in col_]
+    return df.with_columns(polars.concat_str(*exprs, separator=col_sep).alias(col_out))
+
+
+def with_sorted_columns(
+    df: polars.DataFrame,
+    col_: Sequence[str],
+    col_out_: Sequence[str] | None = None,
+    cross_sort: bool = False,
+) -> polars.DataFrame:
+    """Sort within and, optionally, across list-valued column(s).
+
+    :param df: DataFrame
+    :param col_: Column(s) to sort
+    :param col_out_: Output column(s), if different from input
+    :param cross_sort: Whether to sort across columns, as well as within them.
+    :return: DataFrame
+    """
+    # Process arguments
+    col_out_ = col_ if col_out_ is None else col_out_
+    col_ = m_col_.normalize_column_argument(col_)
+    col_out_ = m_col_.normalize_column_argument(col_out_)
+    assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
+    assert all(df.schema[c].base_type() is polars.List for c in col_)
+
+    df = df.with_columns(
+        polars.col(c).list.sort().alias(o) for c, o in zip(col_, col_out_, strict=True)
     )
+
+    if cross_sort and not df.is_empty():
+        # Convert lists to structs to make the sortable
+        df = list_to_struct(df, col_out_)
+        # Sort structs
+        df = df.with_columns(
+            polars.concat_list(col_out_)
+            .list.sort()
+            .list.to_struct(fields=col_out_)
+            .struct.unnest()
+        )
+        # Convert structs back to lists
+        df = struct_to_list(df, col_out_)
+
+    return df
 
 
 def with_intersection_columns(
@@ -140,8 +259,9 @@ def with_intersection_column(
     :return: First DataFrame with intersection column
     """
     comp_col2_ = comp_col_ if comp_col2_ is None else comp_col2_
-    comp_col_ = [comp_col_] if isinstance(comp_col_, str) else comp_col_
-    comp_col2_ = [comp_col2_] if isinstance(comp_col2_, str) else comp_col2_
+    comp_col_, comp_col2_ = map(
+        m_col_.normalize_column_argument, (comp_col_, comp_col2_)
+    )
     col_dct = dict(zip(comp_col_, comp_col2_, strict=True))
 
     df1 = df1.with_columns(
@@ -159,15 +279,6 @@ def has_values(df: polars.DataFrame) -> bool:
     :return: `True` if it does, `False` if it doesn't
     """
     return df.select(polars.any_horizontal(polars.col("*").is_not_null().any())).item()
-
-
-def temp_column(length: int = 24) -> str:
-    """Generate a unique temporary column name for a DataFrame.
-
-    :param length: The length of the temporary column name, defaults to 24
-    :return: The column name
-    """
-    return "".join(random.choice(string.ascii_lowercase) for _ in range(length))
 
 
 def from_csv(path: str) -> polars.DataFrame:
@@ -300,3 +411,103 @@ def lookup_dict(
     assert check_(out_), f"{out_} not in {df}"
 
     return dict(zip(values_(in_), values_(out_), strict=True))
+
+
+# helpers
+def normalize_values_arguments(
+    vals_: Sequence[object | Sequence[object]], col_: str | Sequence[str]
+) -> tuple[list[object], list[str]]:
+    """Normalize value(s) arguments.
+
+    :param vals_: Value(s) list
+    :param col_: Column(s)
+    :return: Normalized value(s) list and column(s)
+    """
+    is_bare = m_col_.is_bare_column_argument(col_)
+    col_ = [col_] if is_bare else list(col_)
+    vals_ = [[v] for v in vals_] if is_bare else list(vals_)
+    return vals_, col_
+
+
+def concat_string_column_expression(
+    df: polars.DataFrame, col: str, list_sep: str = DEFAULT_LIST_SEP
+) -> polars.Expr:
+    """Form an expression for a concat string column.
+
+    :param df: DataFrame
+    :param col: Column
+    :return: Expression
+    """
+    expr = polars.col(col)
+
+    type_ = df.schema[col].base_type()
+
+    if type_ == polars.Struct:
+        expr = polars.concat_list(expr.struct.unnest())
+        type_ = polars.List
+
+    if type_ == polars.List:
+        expr = (
+            expr.list.drop_nulls()
+            .list.eval(polars.element().cast(polars.String))
+            .list.join(list_sep)
+        )
+
+    return expr.cast(polars.String)
+
+
+def list_to_struct(
+    df: polars.DataFrame,
+    col_: str | Sequence[str],
+    col_out_: str | Sequence[str] | None = None,
+) -> polars.DataFrame:
+    """Convert List column(s) to Struct column(s).
+
+    :param df: DataFrame
+    :param col_: Column(s)
+    :param col_out_: Output column(s), if different from input
+    :return: DataFrame
+    """
+    # Process arguments
+    col_out_ = col_ if col_out_ is None else col_out_
+    col_ = m_col_.normalize_column_argument(col_)
+    col_out_ = m_col_.normalize_column_argument(col_out_)
+    assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
+    assert all(df.schema[c].base_type() is polars.List for c in col_)
+    # Convert list to struct
+    return df.with_columns(
+        polars.col(c).list.to_struct("max_width").alias(o)
+        for c, o in zip(col_, col_out_, strict=True)
+    )
+
+
+def struct_to_list(
+    df: polars.DataFrame,
+    col_: str | Sequence[str],
+    col_out_: str | Sequence[str] | None = None,
+    drop_nulls: bool = True,
+) -> polars.DataFrame:
+    """Convert Struct column(s) to List column(s).
+
+    :param df: DataFrame
+    :param col_: Column(s)
+    :param col_out_: Output column(s), if different from input
+    :param drop_nulls: Whether to drop nulls from the list values
+    :return: DataFrame
+    """
+    # Process arguments
+    col_out_ = col_ if col_out_ is None else col_out_
+    col_ = m_col_.normalize_column_argument(col_)
+    col_out_ = m_col_.normalize_column_argument(col_out_)
+    assert len(col_) == len(col_out_), f"{col_} !~ {col_out_}"
+    assert all(df.schema[c].base_type() is polars.Struct for c in col_)
+    # Convert struct to list
+    fields_ = {c: [f.name for f in df.schema[c].fields] for c in col_}.get
+    df = df.with_columns(
+        polars.concat_list(polars.col(c).struct.field(f) for f in fields_(c)).alias(o)
+        for c, o in zip(col_, col_out_, strict=True)
+    )
+    # Drop nulls, if requested
+    if drop_nulls:
+        df = df.with_columns(polars.col(o).list.drop_nulls() for o in col_out_)
+    return df

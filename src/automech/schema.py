@@ -10,6 +10,7 @@ import polars
 from polars.datatypes import Struct
 from pydantic import BaseModel, ConfigDict
 
+import automech.util.col_
 from automech.util import df_
 
 Model = pa.DataFrameModel
@@ -111,11 +112,11 @@ class Errors(BaseModel):
         )
 
 
-def columns(model_: Model | Sequence[Model]) -> dict[str, type]:
+def columns(model_: Model | Sequence[Model]) -> list[str]:
     """Get column names.
 
     :param model_: Model(s)
-    :return: The schema, as a mapping of column names to types
+    :return: Schema, as a mapping of column names to types
     """
     model_ = model_ if isinstance(model_, Sequence) else [model_]
     return list(
@@ -126,12 +127,13 @@ def columns(model_: Model | Sequence[Model]) -> dict[str, type]:
 
 
 def types(
-    model_: Model | Sequence[Model], keys: Sequence[str] | None = None
+    model_: Model | Sequence[Model], keys: Sequence[str] | None = None, py: bool = False
 ) -> dict[str, type]:
     """Get a dictionary mapping column names to type names.
 
     :param models: The models to get the schema for
     :param keys: Optionally, specify keys to include in the schema
+    :param py: Whether to return Python types instead of Polars types.
     :return: The schema, as a mapping of column names to types
     """
     model_ = model_ if isinstance(model_, Sequence) else [model_]
@@ -143,6 +145,9 @@ def types(
 
     if keys is not None:
         type_dct = {k: v for k, v in type_dct.items() if k in keys}
+
+    if py:
+        type_dct = {k: v.to_python() for k, v in type_dct.items()}
 
     return type_dct
 
@@ -360,7 +365,7 @@ def reaction_table_with_formula(
     """
     df = _reaction_table_with_formula(df, spc_df=spc_df)
     if check and spc_df is not None:
-        col_tmp = df_.temp_column()
+        col_tmp = automech.util.col_.temp()
 
         df = _reaction_table_with_formula(
             df, spc_df=spc_df, col_in=Reaction.products, col_out=col_tmp
@@ -404,7 +409,7 @@ def _reaction_table_with_formula(
     if spc_df is None:
         df = df.with_columns(polars.lit({"H": None}).alias(col_out))
     else:
-        col_tmp = df_.temp_column()
+        col_tmp = automech.util.col_.temp()
         spc_df = species_table(spc_df)
         names = spc_df[Species.name]
         formulas = spc_df[Species.formula]
@@ -440,13 +445,3 @@ def has_columns(df: polars.DataFrame, model_: Model | Sequence[Model]) -> bool:
     :return: `True` if it does, `False` if it doesn't
     """
     return all(c in df for c in columns(model_))
-
-
-def columns(model_: Model | Sequence[Model]) -> list[str]:
-    """Determine the list of columns in one ore more models.
-
-    :param model_: The model(s)
-    :return: The list of columns
-    """
-    model_ = model_ if isinstance(model_, Sequence) else [model_]
-    return list(itertools.chain(*(model.to_schema().columns for model in model_)))

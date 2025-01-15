@@ -9,8 +9,7 @@ from ._mech import (
     display,
     display_reactions,
     display_species,
-    drop_parent_reactions,
-    enumerate_reactions_from_smarts,
+    enumerate_reactions,
     expand_parent_stereo,
     expand_stereo,
     from_data,
@@ -38,10 +37,8 @@ from ._mech import (
     string,
     thermo_temperatures,
     update,
-    update_parent_reaction_data,
-    update_parent_species_data,
     with_intersection_columns,
-    with_match_key_column,
+    with_key,
     with_rates,
     with_sort_data,
     with_species,
@@ -83,7 +80,7 @@ __all__ = [
     "without_unused_species",
     "without_duplicate_reactions",
     "with_rates",
-    "with_match_key_column",
+    "with_key",
     "expand_stereo",
     # binary operations
     "intersection",
@@ -92,11 +89,8 @@ __all__ = [
     "with_intersection_columns",
     # parent
     "expand_parent_stereo",
-    "drop_parent_reactions",
-    "update_parent_species_data",
-    "update_parent_reaction_data",
     # building
-    "enumerate_reactions_from_smarts",
+    "enumerate_reactions",
     # sorting
     "with_sort_data",
     # comparisons

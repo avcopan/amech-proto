@@ -165,35 +165,25 @@ def test__expand_parent_stereo(par_mech, mech, rcount, scount):
 
 
 @pytest.mark.parametrize(
-    "par_mech0, mech, rcount, scount",
-    [(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)],
-)
-def test__update_parent_reaction_data(par_mech0, mech, rcount, scount):
-    exp_mech, _ = automech.expand_stereo(mech)
-    par_mech = automech.update_parent_reaction_data(par_mech0, exp_mech)
-    print(par_mech)
-    assert automech.reaction_count(par_mech) == rcount
-    assert automech.species_count(par_mech) == scount
-
-
-@pytest.mark.parametrize(
-    "mech0, smarts, smis_, rcount, scount",
+    "mech0, smarts, smis_, rcount, scount, src_mech",
     [
         (
-            MECH_BUTENE,
+            MECH_BUTENE_SUBSET,
             enum.ReactionSmarts.abstraction,
             [["C1=CCCC1", "CC=CC"], "[OH]"],
             5,
             9,
+            MECH_BUTENE,
         )
     ],
 )
-def test__enumerate_reactions_from_smarts(mech0, smarts, smis_, rcount, scount):
+def test__enumerate_reactions(mech0, smarts, smis_, rcount, scount, src_mech):
     """Test automech.enumerate_reactions_from_smarts."""
-    mech = automech.enumerate_reactions_from_smarts(
-        mech0, smarts, rcts_=smis_, spc_key_=Species.smiles
+    mech = automech.enumerate_reactions(
+        mech0, smarts, rcts_=smis_, spc_key_=Species.smiles, src_mech=src_mech
     )
     print(mech)
+    automech.display(mech)
     assert automech.reaction_count(mech) == rcount
     assert automech.species_count(mech) == scount
 
@@ -232,20 +222,21 @@ if __name__ == "__main__":
     # test__expand_stereo(MECH_BUTENE, 6, 8, 1, 3, True)
     # test__expand_stereo(MECH_NO_REACIONS, 0, 2, 0, 2, False)
     # test__expand_parent_stereo(MECH_BUTENE, MECH_NO_REACIONS, 6, 8)
-    test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
+    # test__rename(MECH_BUTENE, MECH_BUTENE_ALTERNATIVE_NAMES, 4)
     # test__update_parent_reaction_data(MECH_BUTENE, MECH_BUTENE_SUBSET, 6, 9)
     # test__display(MECH_EMPTY, None, None)
     # test__network(MECH_NO_REACIONS)
     # test__display(MECH_NO_REACIONS, None, None)
     # test__display(MECH_PROPANE, ("CCC", "[OH]"), ("C3+OH=C3y1+H2O",))
     # test__network(MECH_NO_REACIONS)
-    # test__enumerate_reactions_from_smarts(
-    #     MECH_BUTENE,
-    #     enum.ReactionSmarts.abstraction,
-    #     [["C1=CCCC1", "CC=CC"], "[OH]"],
-    #     5,
-    #     9,
-    # )
+    test__enumerate_reactions(
+        MECH_BUTENE_SUBSET,
+        enum.ReactionSmarts.abstraction,
+        [["C1=CCCC1", "CC=CC"], "[OH]"],
+        5,
+        9,
+        MECH_BUTENE,
+    )
     # test__with_sort_data(
     #     MECH_ETHANE,
     #     {

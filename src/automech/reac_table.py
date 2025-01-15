@@ -7,72 +7,31 @@ import automol
 import more_itertools as mit
 import polars
 
-from . import data, schema
-from .schema import Reaction, ReactionRate
+from . import data, schema, spec_table
+from .schema import Reaction, ReactionRate, Species
 from .util import col_, df_
 
 m_col_ = col_
 
 DEFAULT_REAGENT_SEPARATOR = " + "
 
-
-# update
-def left_update(
-    rxn_df: polars.DataFrame,
-    src_rxn_df: polars.DataFrame,
-    drop_orig: bool = False,
-) -> polars.DataFrame:
-    """Left-update reaction data by reaction key.
-
-    :param rxn_df: reaction DataFrame
-    :param src_rxn_df: Source reaction DataFrame
-    :param drop_orig: Whether to drop original column values
-    :return: Reaction DataFrame
-    """
-    drop_cols = m_col_.orig(schema.columns(Reaction))
-
-    # Add reaction keys
-    tmp_col = df_.temp_column()
-    rxn_df = with_reaction_key(rxn_df, tmp_col)
-    src_rxn_df = with_reaction_key(src_rxn_df, tmp_col)
-
-    # Update
-    rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
-
-    # Drop unnecessary columns
-    rxn_df = rxn_df.drop(tmp_col, *drop_cols, strict=False)
-    return rxn_df
-
-
-def left_update_rates(
-    rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame
-) -> polars.DataFrame:
-    """Read thermochemical data from one dataframe into another.
-
-    (AVC note: I think this can be deprecated and replaced with the more general
-    function above...)
-
-    :param rxn_df: Reactions DataFrame
-    :param src_rxn_df: Reactions DataFrame with thermochemical data
-    :return: reactions DataFrame
-    """
-    rxn_df = rxn_df.rename(col_.to_orig(ReactionRate.rate), strict=False)
-
-    if has_colliders(rxn_df):
-        raise NotImplementedError(
-            f"Updating rates with colliders not yet implemented.\n{rxn_df}"
-        )
-
-    col_key = df_.temp_column()
-    rxn_df = with_reaction_key(rxn_df, col=col_key)
-    src_rxn_df = with_reaction_key(src_rxn_df, col=col_key)
-    rxn_df = rxn_df.join(src_rxn_df, how="left", on=col_key)
-    rxn_df = rxn_df.drop(col_key, polars.selectors.ends_with("_right"))
-    rxn_df, *_ = schema.reaction_table(rxn_df, model_=ReactionRate)
-    return rxn_df
+ID_COLS = (Reaction.reactants, Reaction.products)
+ReactionId = tuple[*schema.types(Reaction, ID_COLS, py=True).values()]
 
 
 # properties
+def reaction_ids(rxn_df: polars.DataFrame, cross_sort: bool = True) -> list[ReactionId]:
+    """Get IDs for a reactions DataFrame.
+
+    :param rxn_df: Species DataFrame
+    :param cross_sort: Whether to make keys direction-agnostic by cross-sorting reagents
+    :return: Reaction IDs
+    """
+    rxn_id_col_ = ID_COLS
+    rxn_df = df_.with_sorted_columns(rxn_df, col_=rxn_id_col_, cross_sort=cross_sort)
+    return rxn_df.select(rxn_id_col_).rows()
+
+
 def has_colliders(rxn_df: polars.DataFrame) -> bool:
     """Determine whether a reactions DataFrame has colliders.
 
@@ -81,6 +40,17 @@ def has_colliders(rxn_df: polars.DataFrame) -> bool:
     """
     return ReactionRate.colliders in rxn_df and df_.has_values(
         rxn_df.get_column(ReactionRate.colliders).struct.unnest()
+    )
+
+
+def has_rates(rxn_df: polars.DataFrame) -> bool:
+    """Determine whether a reactions DataFrame has rates.
+
+    :param rxn_df: Reactions DataFrame
+    :return: `True` if it does, `False` if not
+    """
+    return ReactionRate.rate in rxn_df and df_.has_values(
+        rxn_df.get_column(ReactionRate.rate).struct.unnest()
     )
 
 
@@ -118,36 +88,168 @@ def reagent_strings(
     return [sep.join(r) for r in reagents(rxn_df)]
 
 
+# update
+def left_update(
+    rxn_df: polars.DataFrame,
+    src_rxn_df: polars.DataFrame,
+    drop_orig: bool = True,
+) -> polars.DataFrame:
+    """Left-update reaction data by reaction key.
+
+    :param rxn_df: reaction DataFrame
+    :param src_rxn_df: Source reaction DataFrame
+    :param drop_orig: Whether to drop original column values
+    :return: Reaction DataFrame
+    """
+    drop_cols = m_col_.orig(schema.columns(Reaction))
+
+    # Add reaction keys
+    tmp_col = col_.temp()
+    rxn_df = with_key(rxn_df, tmp_col)
+    src_rxn_df = with_key(src_rxn_df, tmp_col)
+
+    # Update
+    rxn_df = df_.left_update(rxn_df, src_rxn_df, col_=tmp_col, drop_orig=drop_orig)
+
+    # Drop unnecessary columns
+    rxn_df = rxn_df.drop(tmp_col, *drop_cols, strict=False)
+    return rxn_df
+
+
+def left_update_rates(
+    rxn_df: polars.DataFrame, src_rxn_df: polars.DataFrame
+) -> polars.DataFrame:
+    """Read thermochemical data from one dataframe into another.
+
+    (AVC note: I think this can be deprecated and replaced with the more general
+    function above...)
+
+    :param rxn_df: Reactions DataFrame
+    :param src_rxn_df: Reactions DataFrame with thermochemical data
+    :return: reactions DataFrame
+    """
+    rxn_df = rxn_df.rename(col_.to_orig(ReactionRate.rate), strict=False)
+
+    if has_colliders(rxn_df):
+        raise NotImplementedError(
+            f"Updating rates with colliders not yet implemented.\n{rxn_df}"
+        )
+
+    col_key = col_.temp()
+    rxn_df = with_key(rxn_df, col=col_key)
+    src_rxn_df = with_key(src_rxn_df, col=col_key)
+    rxn_df = rxn_df.join(src_rxn_df, how="left", on=col_key)
+    rxn_df = rxn_df.drop(col_key, polars.selectors.ends_with("_right"))
+    rxn_df, *_ = schema.reaction_table(rxn_df, model_=ReactionRate)
+    return rxn_df
+
+
+# add rows
+def add_missing_reactions_by_id(
+    rxn_df: polars.DataFrame, rxn_ids: Sequence[ReactionId]
+) -> polars.DataFrame:
+    """Add missing reactions to a reactions DataFrame.
+
+    :param spc_df: Reactions DataFrame
+    :param rxn_ids: Reaction IDs
+    :return: Reactions DataFrame
+    """
+    # Sort reaction IDs
+    rxn_ids = normalize_reaction_ids(rxn_ids)
+
+    # Sort reagents
+    id_cols0 = ID_COLS
+    id_cols = col_.prefix(id_cols0, col_.temp())
+    rxn_df = with_sorted_reagents(
+        rxn_df, col_=id_cols0, col_out_=id_cols, cross_sort=True
+    )
+
+    # Add match index column
+    idx_col = col_.temp()
+    rxn_df = df_.with_match_index_column(rxn_df, idx_col, vals_=rxn_ids, col_=id_cols)
+    rxn_df = rxn_df.drop(id_cols)
+
+    # Append missing reactions to reactions DataFrame
+    miss_rxn_ids = [s for i, s in enumerate(rxn_ids) if i not in rxn_df[idx_col]]
+    miss_rxn_df = polars.DataFrame(miss_rxn_ids, schema=id_cols0, orient="row")
+    miss_rxn_df, *_ = schema.reaction_table(miss_rxn_df)
+    return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
+
+
 # add columns
-def with_reaction_key(
+def with_key(
     rxn_df: polars.DataFrame,
     col: str = "key",
-    spc_key_dct: dict[str, object] | None = None,
+    spc_df: polars.DataFrame | None = None,
+    cross_sort: bool = True,
 ) -> polars.DataFrame:
     """Add a key for identifying unique reactions to this DataFrame.
 
-    The key is formed by sorting reactants and products and then sorting the direction
-    of the reaction.
+    The key is formed by sorting within and across reactants and products to form a
+    reaction ID and then joining to form a concatenated string.
 
-        id = string join(sorted([sorted(rcts), sorted(prds)]))
+    If a species DataFrame is passed in, the reaction keys will be name-agnostic.
 
-    By default, this uses the species names, but a dictionary can be passed in to
-    translate these into other species identifiers.
-
-    :param rxn_df: A reactions DataFrame
-    :param col: The column name
-    :param spc_key_dct: A dictionary mapping species names onto unique species keys
+    :param rxn_df: Reactions DataFrame
+    :param col: Column name
+    :param spc_df: Optional species DataFrame, for using unique species IDs
+    :param cross_sort: Whether to sort the reaction direction
     :return: A reactions DataFrame with this key as a new column
     """
+    rct_col0 = Reaction.reactants
+    prd_col0 = Reaction.products
+    rct_col = col_.temp()
+    prd_col = col_.temp()
 
-    def _key(rcts, prds):
-        if spc_key_dct is not None:
-            rcts = list(map(spc_key_dct.get, rcts))
-            prds = list(map(spc_key_dct.get, prds))
-        rcts, prds = sorted([sorted(rcts), sorted(prds)])
-        return data.reac.write_chemkin_equation(rcts, prds)
+    # If requested, use species keys instead of names
+    if spc_df is not None:
+        id_col = col_.temp()
+        spc_df = spec_table.with_key(spc_df, id_col)
+        rxn_df = translate_reagents(
+            rxn_df,
+            spc_df[Species.name],
+            spc_df[id_col],
+            rct_col=rct_col,
+            prd_col=prd_col,
+        )
+        rct_col0 = rct_col
+        prd_col0 = prd_col
 
-    return df_.map_(rxn_df, (Reaction.reactants, Reaction.products), col, _key)
+    # Sort reagents
+    rxn_df = with_sorted_reagents(
+        rxn_df,
+        col_=[rct_col0, prd_col0],
+        col_out_=[rct_col, prd_col],
+        cross_sort=cross_sort,
+    )
+
+    # Concatenate
+    rxn_df = df_.with_concat_string_column(
+        rxn_df, col, col_=[rct_col, prd_col], col_sep="=", list_sep="+"
+    )
+    return rxn_df.drop(rct_col, prd_col)
+
+
+def with_sorted_reagents(
+    rxn_df: polars,
+    col_: Sequence[str] = (Reaction.reactants, Reaction.products),
+    col_out_: Sequence[str] | None = None,
+    cross_sort: bool = True,
+) -> polars.DataFrame:
+    """Generate sorted reagents columns.
+
+    :param rxn_df: Reactions DataFrame
+    :param col_: Reactant and product column(s)
+    :param col_out_: Output reactant and product column(s), if different from input
+    :param cross_sort: Whether to sort the reaction direction
+    :return: Reactions DataFrame
+    """
+    col_out_ = col_ if col_out_ is None else col_out_
+    assert len(col_) == 2, f"len({col_}) != 2"
+    assert len(col_out_) == 2, f"len({col_out_}) != 2"
+    return df_.with_sorted_columns(
+        rxn_df, col_=col_, col_out_=col_out_, cross_sort=cross_sort
+    )
 
 
 def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
@@ -228,7 +330,7 @@ def rename(
     rxn_df: polars.DataFrame,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
-    drop_orig: bool = False,
+    drop_orig: bool = True,
 ) -> polars.DataFrame:
     """Rename species in a reactions DataFrame.
 
@@ -293,9 +395,24 @@ def select_pes(
     def _match(fml: dict[str, int]) -> bool:
         return any(automol.form.match(fml, f) for f in fmls)
 
-    col_tmp = df_.temp_column()
+    col_tmp = col_.temp()
     rxn_df = df_.map_(rxn_df, Reaction.formula, col_tmp, _match)
     match_expr = polars.col(col_tmp)
     rxn_df = rxn_df.filter(~match_expr if exclude else match_expr)
     rxn_df = rxn_df.drop(col_tmp)
     return rxn_df
+
+
+# helpers
+def normalize_reaction_ids(
+    rxn_ids: Sequence[ReactionId], cross_sort: bool = True
+) -> list[ReactionId]:
+    """Normalize a list of reaction IDs.
+
+    :param rxn_ids: Reaction IDs
+    :param cross_sort: Whether to make keys direction-agnostic by cross-sorting reagents
+    :return: Reaction IDs
+    """
+    return reaction_ids(
+        polars.DataFrame(rxn_ids, schema=ID_COLS, orient="row"), cross_sort=cross_sort
+    )

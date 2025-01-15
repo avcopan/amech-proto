@@ -11,15 +11,58 @@ from .util import col_, df_
 
 m_col_ = col_
 
-SPECIES_KEY_COLS = (Species.amchi, Species.spin, Species.charge)
+ID_COLS = (Species.amchi, Species.spin, Species.charge)
+SpeciesId = tuple[*schema.types(Species, ID_COLS, py=True).values()]
+
+
+# properties
+def species_ids(
+    spc_df: polars.DataFrame,
+    vals_: Sequence[object | Sequence[object]] | None = None,
+    col_: str | Sequence[str] = Species.name,
+    try_fill: bool = False,
+) -> list[SpeciesId]:
+    """Get IDs for a species DataFrame.
+
+    :param spc_df: Species DataFrame
+    :param vals_: Optionally, lookup IDs for species matching these column value(s)
+    :param col_: Column name(s) corresponding to `vals_`
+    :param try_fill: Whether to attempt to fill missing values
+    :return: Species IDs
+    """
+    spc_id_col_ = ID_COLS
+    vals_, col_ = normalize_values_arguments(vals_, col_)
+    vals_out_ = df_.values(spc_df, spc_id_col_, vals_in_=vals_, col_in_=col_)
+
+    spc_ids = []
+    for val_, val_out_ in zip(vals_, vals_out_, strict=True):
+        spc_ids.append(
+            species_id_fill_value(val_, col_)
+            if try_fill and not any(val_out_)
+            else val_out_
+        )
+    return list(map(tuple, spc_ids))
+
+
+def species_names_by_id(
+    spc_df: polars.DataFrame, spc_ids: Sequence[SpeciesId]
+) -> list[str]:
+    """Get species names by ID from a species DataFrame.
+
+    :param spc_df: Species DataFrame
+    :param spc_ids: Species IDs (AMChI, spin, charge)
+    :return: Species names
+    """
+    spc_id_col_ = ID_COLS
+    return df_.values(spc_df, Species.name, vals_in_=spc_ids, col_in_=spc_id_col_)
 
 
 # update
 def left_update(
     spc_df: polars.DataFrame,
     src_spc_df: polars.DataFrame,
-    key_col_: str | Sequence[str] = SPECIES_KEY_COLS,
-    drop_orig: bool = False,
+    key_col_: str | Sequence[str] = ID_COLS,
+    drop_orig: bool = True,
 ) -> polars.DataFrame:
     """Left-update species data by species key.
 
@@ -56,11 +99,31 @@ def left_update_thermo(
     return schema.species_table(spc_df, model_=SpeciesThermo)
 
 
+# add rows
+def add_missing_species_by_id(
+    spc_df: polars.DataFrame, spc_ids: Sequence[SpeciesId]
+) -> polars.DataFrame:
+    """Add missing species to a species DataFrame.
+
+    :param spc_df: Species DataFrame
+    :param spc_ids: Species IDs
+    :return: Species DataFrame
+    """
+    id_col_ = ID_COLS
+    idx_col = col_.temp()
+    spc_df = df_.with_match_index_column(spc_df, idx_col, vals_=spc_ids, col_=id_col_)
+
+    miss_spc_ids = [s for i, s in enumerate(spc_ids) if i not in spc_df[idx_col]]
+    miss_spc_df = polars.DataFrame(miss_spc_ids, schema=id_col_, orient="row")
+    miss_spc_df = schema.species_table(miss_spc_df)
+    return polars.concat([spc_df.drop(idx_col), miss_spc_df], how="diagonal_relaxed")
+
+
 # add columns
-def with_species_key(
+def with_key(
     spc_df: polars.DataFrame,
     col: str = "key",
-    key_col_: str | Sequence[str] = SPECIES_KEY_COLS,
+    key_col_: str | Sequence[str] = ID_COLS,
 ) -> polars.DataFrame:
     """Add a key for identifying unique species.
 
@@ -70,7 +133,7 @@ def with_species_key(
     :param col: Column name, defaults to "key"
     :return: Species DataFrame
     """
-    return df_.with_concat_string_column(spc_df, col=col, src_col_=key_col_)
+    return df_.with_concat_string_column(spc_df, col_out=col, col_=key_col_)
 
 
 # tranform
@@ -78,7 +141,7 @@ def rename(
     spc_df: polars.DataFrame,
     names: Sequence[str] | Mapping[str, str],
     new_names: Sequence[str] | None = None,
-    drop_orig: bool = False,
+    drop_orig: bool = True,
 ) -> polars.DataFrame:
     """Rename species in a species DataFrame.
 
@@ -99,16 +162,13 @@ def rename(
 
 
 # sort
-def sort_by_formula(
-    spc_df: polars.DataFrame, key: str = Species.formula
-) -> polars.DataFrame:
+def sort_by_formula(spc_df: polars.DataFrame) -> polars.DataFrame:
     """Sort species by formula.
 
     :param spc_df: Species DataFrame
-    :param key: Formula column key
     :return: Species DataFrame, sorted by formula
     """
-    all_atoms = [s for s, *_ in spc_df.schema[key]]
+    all_atoms = [s for s, *_ in spc_df.schema[Species.formula]]
     heavy_atoms = [s for s in all_atoms if s != "H"]
     return spc_df.sort(
         polars.sum_horizontal(
@@ -123,96 +183,10 @@ def sort_by_formula(
 
 
 # select
-def rows_dict(
-    spc_df: polars.DataFrame,
-    vals_: object | Sequence[object] | None = None,
-    key_: str | Sequence[str] = Species.name,
-    try_fill: bool = False,
-    fail_if_multiple: bool = True,
-) -> dict[str, dict[str, object]]:
-    """Select a row that matches a species.
-
-    :param spc_df: A species DataFrame
-    :param vals_: Column value(s) list to select
-    :param key_: Column key(s) to select by
-    :param try_fill: Whether attempt to fill missing values
-    :param fail_if_multiple: Whether to fail if multiple matches are found
-    :return: The modified species DataFrame
-    """
-    return {
-        r.get(Species.name): r
-        for r in rows(
-            spc_df, vals_, key_, try_fill=try_fill, fail_if_multiple=fail_if_multiple
-        )
-    }
-
-
-def rows(
-    spc_df: polars.DataFrame,
-    vals_: object | Sequence[object] | None = None,
-    key_: str | Sequence[str] = Species.name,
-    try_fill: bool = False,
-    fail_if_multiple: bool = True,
-) -> list[dict[str, object]]:
-    """Select a row that matches a species.
-
-    :param spc_df: A species DataFrame
-    :param vals_: Column value(s) list to select
-    :param key_: Column key(s) to select by
-    :param try_fill: Whether attempt to fill missing values
-    :param fail_if_multiple: Whether to fail if multiple matches are found
-    :return: The modified species DataFrame
-    """
-    if vals_ is None:
-        return spc_df.rows(named=True)
-
-    return [
-        row(spc_df, v, key_, try_fill=try_fill, fail_if_multiple=fail_if_multiple)
-        for v in vals_
-    ]
-
-
-def row(
-    spc_df: polars.DataFrame,
-    val_: object | Sequence[object],
-    key_: str | Sequence[str] = Species.name,
-    try_fill: bool = False,
-    fail_if_multiple: bool = True,
-) -> dict[str, object]:
-    """Select a row that matches a species.
-
-    :param spc_df: A species DataFrame
-    :param val_: Column value(s)
-    :param key_: Column key(s)
-    :param try_fill: Whether attempt to fill missing values
-    :param fail_if_multiple: Whether to fail if multiple matches are found
-    :return: The modified species DataFrame
-    """
-    if isinstance(key_, str):
-        key_ = [key_]
-        val_ = [val_]
-
-    match_df = filter(spc_df, [val_], key_)
-    count = df_.count(match_df)
-
-    if fail_if_multiple and count > 1:
-        raise ValueError(f"Multiple species match the criteria: {val_}")
-
-    if try_fill and not count:
-        data = {k: [v] for k, v in zip(key_, val_, strict=True)}
-        match_df = polars.DataFrame(data)
-        match_df = schema.species_table(match_df)
-        match_df = polars.DataFrame(
-            match_df, schema={k: spc_df.schema[k] for k in match_df.columns}
-        )
-
-    return None if match_df.is_empty() else match_df.row(0, named=True)
-
-
 def filter(  # noqa: A001
     spc_df: polars.DataFrame,
     vals_: Sequence[object | Sequence[object]] | None = None,
-    key_: str | Sequence[str] = Species.name,
+    col_: str | Sequence[str] = Species.name,
 ) -> polars.DataFrame:
     """Filter to include only rows that match one or more species.
 
@@ -222,7 +196,7 @@ def filter(  # noqa: A001
     :param keys: Column keys
     :return: The modified species DataFrame
     """
-    match_exprs = [species_match_expression(val_, key_) for val_ in vals_]
+    match_exprs = [species_match_expression(val_, col_) for val_ in vals_]
     return spc_df.filter(polars.any_horizontal(*match_exprs))
 
 
@@ -245,3 +219,48 @@ def species_match_expression(
         match_data[Species.amchi] = automol.smiles.amchi(match_data.pop(Species.smiles))
 
     return polars.all_horizontal(*(polars.col(k) == v for k, v in match_data.items()))
+
+
+def normalize_values_arguments(
+    vals_: Sequence[object | Sequence[object]] | None = None,
+    col_: str | Sequence[str] = Species.name,
+) -> tuple[list[object], list[str]]:
+    """Normalize species values input.
+
+    :param vals_: Optionally, lookup IDs for species matching these column value(s)
+    :param col_: Column name(s) corresponding to `vals_`
+    :return: Normalized value(s) list and column(s)
+    """
+    vals_, col_ = df_.normalize_values_arguments(vals_=vals_, col_=col_)
+
+    # If using SMILES, convert to AMChI
+    if Species.smiles in col_:
+        smi_idx = col_.index(Species.smiles)
+        col_[smi_idx] = Species.amchi
+        if vals_:
+            col_vals_ = list(zip(*vals_, strict=True))
+            col_vals_[smi_idx] = list(map(automol.smiles.amchi, col_vals_[smi_idx]))
+            vals_ = list(zip(*col_vals_, strict=True))
+
+    return vals_, col_
+
+
+def species_id_fill_value(
+    val_: Sequence[object | Sequence[object]] | None = None,
+    col_: str | Sequence[str] = Species.name,
+) -> SpeciesId:
+    """Calculate an appropriate fill value for a species ID.
+
+    :param val_: Column value(s)
+    :param col_: Column name(s)
+    :return: Species ID
+    """
+    dct = dict(zip(col_, val_, strict=True))
+    amchi = (
+        automol.smiles.amchi(dct[Species.smiles])
+        if Species.smiles in dct
+        else dct.get(Species.amchi)
+    )
+    spin = dct[Species.spin] if Species.spin in dct else automol.amchi.guess_spin(amchi)
+    charge = dct[Species.charge] if Species.charge in dct else 0
+    return (amchi, spin, charge)
