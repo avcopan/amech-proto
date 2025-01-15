@@ -260,14 +260,17 @@ def with_rates(rxn_df: polars.DataFrame) -> polars.DataFrame:
     :param rxn_df: Reaction DataFrame
     :return: Reaction DataFrame
     """
+    rate0 = dict(data.rate.SimpleRate())
+    coll0 = {"M": None}
+
     if ReactionRate.rate not in rxn_df:
-        rate = dict(data.rate.SimpleRate())
-        rxn_df = rxn_df.with_columns(polars.lit(rate).alias(ReactionRate.rate))
+        rxn_df = rxn_df.with_columns(polars.lit(rate0).alias(ReactionRate.rate))
 
     if ReactionRate.colliders not in rxn_df:
-        coll = {"M": None}
-        rxn_df = rxn_df.with_columns(polars.lit(coll).alias(ReactionRate.colliders))
+        rxn_df = rxn_df.with_columns(polars.lit(coll0).alias(ReactionRate.colliders))
 
+    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.rate).fill_null(rate0))
+    rxn_df = rxn_df.with_columns(polars.col(ReactionRate.colliders).fill_null(coll0))
     return rxn_df
 
 
