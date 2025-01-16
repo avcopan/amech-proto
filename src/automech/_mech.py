@@ -1214,11 +1214,6 @@ def enumerate_reactions(
     :param src_mech: Optional source mechanism for species names and data
     :return: Mechanism with enumerated reactions
     """
-    # Use the rate units of the second mechanism
-    mech = (
-        mech if src_mech is None else set_rate_units(mech, units=rate_units(src_mech))
-    )
-
     # Check reactants argument
     nrcts = automol.smarts.reactant_count(smarts)
     rcts_ = [None] * nrcts if rcts_ is None else rcts_
@@ -1229,27 +1224,29 @@ def enumerate_reactions(
     rcts_ = [spc_pool if r is None else [r] if isinstance(r, str) else r for r in rcts_]
 
     # Get available species data
-    src_spc_df = species(mech) if src_mech is None else species(update(mech, src_mech))
+    spc_df = species(mech)
 
     # Enumerate reactions
     rxn_spc_ids = []
     for rcts in itertools.product(*rcts_):
-        rct_spc_ids = spec_table.species_ids(
-            src_spc_df, rcts, col_=spc_key_, try_fill=True
-        )
+        rct_spc_ids = spec_table.species_ids(spc_df, rcts, col_=spc_key_, try_fill=True)
         rct_chis, *_ = zip(*rct_spc_ids, strict=True)
         for rxn in automol.reac.enum.from_amchis(smarts, rct_chis):
             _, prd_chis = automol.reac.amchis(rxn)
             prd_spc_ids = spec_table.species_ids(
-                src_spc_df, prd_chis, col_=Species.amchi, try_fill=True
+                spc_df, prd_chis, col_=Species.amchi, try_fill=True
             )
             rxn_spc_ids.append((rct_spc_ids, prd_spc_ids))
 
     # Form the updated species DataFrame
     spc_ids = list(itertools.chain.from_iterable(r + p for r, p in rxn_spc_ids))
     spc_ids = list(mit.unique_everseen(spc_ids))
-    spc_df = spec_table.add_missing_species_by_id(species(mech), spc_ids)
-    spc_df = spc_df if src_mech is None else spec_table.left_update(spc_df, src_spc_df)
+    spc_df = spec_table.add_missing_species_by_id(spc_df, spc_ids)
+    spc_df = (
+        spc_df
+        if src_mech is None
+        else spec_table.left_update(spc_df, species(src_mech))
+    )
 
     # Form the updated reactions DataFrame
     spc_names = spec_table.species_names_by_id(spc_df, spc_ids)

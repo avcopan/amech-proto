@@ -183,7 +183,6 @@ def test__enumerate_reactions(mech0, smarts, smis_, rcount, scount, src_mech):
         mech0, smarts, rcts_=smis_, spc_key_=Species.smiles, src_mech=src_mech
     )
     print(mech)
-    automech.display(mech)
     assert automech.reaction_count(mech) == rcount
     assert automech.species_count(mech) == scount
 
