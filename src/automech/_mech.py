@@ -1198,7 +1198,7 @@ def enumerate_reactions(
     mech: Mechanism,
     smarts: str,
     rcts_: Sequence[ReagentValue_] | None = None,
-    spc_key_: str | Sequence[str] = Species.name,
+    spc_col_: str | Sequence[str] = Species.name,
     src_mech: Mechanism | None = None,
 ) -> Mechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
@@ -1220,16 +1220,14 @@ def enumerate_reactions(
     assert len(rcts_) == nrcts, f"Reactant count mismatch for {smarts}:\n{rcts_}"
 
     # Process reactants argument
-    spc_pool = species_names(mech)
-    rcts_ = [spc_pool if r is None else [r] if isinstance(r, str) else r for r in rcts_]
-
-    # Get available species data
     spc_df = species(mech)
+    spc_pool = df_.values(spc_df, spc_col_)
+    rcts_ = [spc_pool if r is None else [r] if isinstance(r, str) else r for r in rcts_]
 
     # Enumerate reactions
     rxn_spc_ids = []
     for rcts in itertools.product(*rcts_):
-        rct_spc_ids = spec_table.species_ids(spc_df, rcts, col_=spc_key_, try_fill=True)
+        rct_spc_ids = spec_table.species_ids(spc_df, rcts, col_=spc_col_, try_fill=True)
         rct_chis, *_ = zip(*rct_spc_ids, strict=True)
         for rxn in automol.reac.enum.from_amchis(smarts, rct_chis):
             _, prd_chis = automol.reac.amchis(rxn)

@@ -46,21 +46,24 @@ def values(
     is_bare = m_col_.is_bare_column_argument(col_)
     col_ = m_col_.normalize_column_argument(col_)
 
-    # If no input value(s) were given, return output value(s) for all rows
-    if vals_in_ is None or col_in_ is None:
-        assert vals_in_ is None and col_in_ is None, f"{vals_in_} {col_in_}"
-        return list(df.select(*col_).rows())
-
-    vals_in_, col_in_ = normalize_values_arguments(vals_in_, col_in_)
-
-    idx_col = m_col_.temp()
-    df = with_match_index_column(df, idx_col, vals_=vals_in_, col_=col_in_)
-    df = df.filter(polars.col(idx_col).is_not_null()).unique(idx_col)
-    miss_idxs = [i for i, _ in enumerate(vals_in_) if i not in df.get_column(idx_col)]
-    miss_df = polars.DataFrame({idx_col: miss_idxs})
-    df = polars.concat([df, miss_df], how="diagonal_relaxed")
-    df = df.sort(idx_col)
     vals_ = df.select(*col_).rows()
+
+    # If requested, narrow the values to rows matching the input values
+    if vals_in_ is not None or col_in_ is not None:
+        assert vals_in_ is not None and col_in_ is not None, f"{vals_in_} {col_in_}"
+        vals_in_, col_in_ = normalize_values_arguments(vals_in_, col_in_)
+
+        idx_col = m_col_.temp()
+        df = with_match_index_column(df, idx_col, vals_=vals_in_, col_=col_in_)
+        df = df.filter(polars.col(idx_col).is_not_null()).unique(idx_col)
+        miss_idxs = [
+            i for i, _ in enumerate(vals_in_) if i not in df.get_column(idx_col)
+        ]
+        miss_df = polars.DataFrame({idx_col: miss_idxs})
+        df = polars.concat([df, miss_df], how="diagonal_relaxed")
+        df = df.sort(idx_col)
+        vals_ = df.select(col_).rows()
+
     return [v[0] for v in vals_] if is_bare else vals_
 
 

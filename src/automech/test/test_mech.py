@@ -180,7 +180,7 @@ def test__expand_parent_stereo(par_mech, mech, rcount, scount):
 def test__enumerate_reactions(mech0, smarts, smis_, rcount, scount, src_mech):
     """Test automech.enumerate_reactions_from_smarts."""
     mech = automech.enumerate_reactions(
-        mech0, smarts, rcts_=smis_, spc_key_=Species.smiles, src_mech=src_mech
+        mech0, smarts, rcts_=smis_, spc_col_=Species.smiles, src_mech=src_mech
     )
     print(mech)
     assert automech.reaction_count(mech) == rcount
