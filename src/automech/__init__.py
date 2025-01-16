@@ -9,6 +9,8 @@ from ._mech import (
     display,
     display_reactions,
     display_species,
+    drop_duplicate_reactions,
+    drop_self_reactions,
     enumerate_reactions,
     expand_parent_stereo,
     expand_stereo,
@@ -42,7 +44,6 @@ from ._mech import (
     with_rates,
     with_sort_data,
     with_species,
-    without_duplicate_reactions,
     without_unused_species,
 )
 
@@ -70,6 +71,9 @@ __all__ = [
     "reaction_equations",
     "rename_dict",
     "network",
+    # add/remove reactions
+    "drop_duplicate_reactions",
+    "drop_self_reactions",
     # transformations
     "rename",
     "remove_all_reactions",
@@ -78,7 +82,6 @@ __all__ = [
     "neighborhood",
     "with_species",
     "without_unused_species",
-    "without_duplicate_reactions",
     "with_rates",
     "with_key",
     "expand_stereo",

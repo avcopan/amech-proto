@@ -144,7 +144,7 @@ def left_update_rates(
     return rxn_df
 
 
-# add rows
+# add/remove rows
 def add_missing_reactions_by_id(
     rxn_df: polars.DataFrame, rxn_ids: Sequence[ReactionId]
 ) -> polars.DataFrame:
@@ -176,7 +176,23 @@ def add_missing_reactions_by_id(
     return polars.concat([rxn_df.drop(idx_col), miss_rxn_df], how="diagonal_relaxed")
 
 
-# add columns
+def drop_self_reactions(rxn_df: polars.DataFrame) -> polars.DataFrame:
+    """Drop self-reactions from reactions DataFrame.
+
+    :param rxn_df: Reactions DataFrame
+    :return: Reactions DataFrame
+    """
+    rcol0 = Reaction.reactants
+    pcol0 = Reaction.products
+    rcol, pcol = col_.prefix((rcol0, pcol0), col_.temp())
+    rxn_df = with_sorted_reagents(
+        rxn_df, col_=(rcol0, pcol0), col_out_=(rcol, pcol), cross_sort=False
+    )
+    rxn_df = rxn_df.filter(polars.col(rcol) != polars.col(pcol))
+    return rxn_df.drop(rcol, pcol)
+
+
+# add/remove columns
 def with_key(
     rxn_df: polars.DataFrame,
     col: str = "key",

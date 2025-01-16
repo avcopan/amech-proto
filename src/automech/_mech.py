@@ -696,6 +696,31 @@ def neighborhood(
     )
 
 
+# drop/add reactions
+def drop_duplicate_reactions(mech: Mechanism) -> Mechanism:
+    """Drop duplicate reactions from mechanism.
+
+    :param mech: Mechanism
+    :return: Mechanism without duplicate reactions
+    """
+    col_tmp = col_.temp()
+    rxn_df = reactions(mech)
+    rxn_df = reac_table.with_key(rxn_df, col=col_tmp)
+    rxn_df = rxn_df.unique(col_tmp, maintain_order=True)
+    rxn_df = rxn_df.drop(col_tmp)
+    return set_reactions(mech, rxn_df)
+
+
+def drop_self_reactions(mech: Mechanism) -> Mechanism:
+    """Drop self-reactions from mechanism.
+
+    :param mech: Mechanism
+    :return: Mechanism
+    """
+    rxn_df = reac_table.drop_self_reactions(reactions(mech))
+    return set_reactions(mech, rxn_df)
+
+
 def with_species(
     mech: Mechanism, spc_names: Sequence[str] = (), strict: bool = False
 ) -> Mechanism:
@@ -767,20 +792,6 @@ def without_unused_species(mech: Mechanism) -> Mechanism:
     used_names = species_names(mech, rxn_only=True)
     spc_df = spc_df.filter(polars.col(Species.name).is_in(used_names))
     return set_species(mech, spc_df)
-
-
-def without_duplicate_reactions(mech: Mechanism) -> Mechanism:
-    """Remove duplicate reactions from mechanism.
-
-    :param mech: Mechanism
-    :return: Mechanism without duplicate reactions
-    """
-    col_tmp = col_.temp()
-    rxn_df = reactions(mech)
-    rxn_df = reac_table.with_key(rxn_df, col=col_tmp)
-    rxn_df = rxn_df.unique(col_tmp, maintain_order=True)
-    rxn_df = rxn_df.drop(col_tmp)
-    return set_reactions(mech, rxn_df)
 
 
 def with_rates(mech: Mechanism) -> Mechanism:
@@ -913,7 +924,7 @@ def expand_stereo(
     )
 
     if not distinct_ts:
-        mech = without_duplicate_reactions(mech)
+        mech = drop_duplicate_reactions(mech)
 
     return mech, err_mech
 
@@ -1200,6 +1211,41 @@ def enumerate_reactions(
     rcts_: Sequence[ReagentValue_] | None = None,
     spc_col_: str | Sequence[str] = Species.name,
     src_mech: Mechanism | None = None,
+    repeat: int = 1,
+    drop_self_rxns: bool = True,
+) -> Mechanism:
+    """Enumerate reactions for mechanism based on SMARTS reaction template.
+
+    Reactants are listed by position in the SMARTS template. If a sequence of reactants
+    is provided, reactions will be enumerated for each of them. If `None` is provided,
+    reactions will be enumerated for all species currently in the mechanism.
+
+    :param mech: Mechanism
+    :param smarts: SMARTS reaction template
+    :param rcts_: Reactants to be used in enumeration (see above)
+    :param spc_key_: Species column key(s) for identifying reactants and products
+    :param src_mech: Optional source mechanism for species names and data
+    :param repeat: Number of times to repeat the enumeration
+    :param drop_self_rxns: Whether to drop self-reactions
+    :return: Mechanism with enumerated reactions
+    """
+    for _ in range(repeat):
+        mech = _enumerate_reactions(
+            mech, smarts, rcts_=rcts_, spc_col_=spc_col_, src_mech=src_mech
+        )
+
+    if drop_self_rxns:
+        mech = drop_self_reactions(mech)
+
+    return mech
+
+
+def _enumerate_reactions(
+    mech: Mechanism,
+    smarts: str,
+    rcts_: Sequence[ReagentValue_] | None = None,
+    spc_col_: str | Sequence[str] = Species.name,
+    src_mech: Mechanism | None = None,
 ) -> Mechanism:
     """Enumerate reactions for mechanism based on SMARTS reaction template.
 
@@ -1250,11 +1296,12 @@ def enumerate_reactions(
     spc_names = spec_table.species_names_by_id(spc_df, spc_ids)
     name_ = dict(zip(spc_ids, spc_names, strict=True)).get
     rxn_ids = [[list(map(name_, r)) for r in rs] for rs in rxn_spc_ids]
+    rxn_ids = list(mit.unique_everseen(rxn_ids))
     rxn_df = reac_table.add_missing_reactions_by_id(reactions(mech), rxn_ids)
 
     mech = update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
     mech = mech if src_mech is None else left_update(mech, src_mech)
-    return mech
+    return drop_duplicate_reactions(mech)
 
 
 # sorting
