@@ -198,6 +198,7 @@ def with_key(
     col: str = "key",
     spc_df: polars.DataFrame | None = None,
     cross_sort: bool = True,
+    stereo: bool = True,
 ) -> polars.DataFrame:
     """Add a key for identifying unique reactions to this DataFrame.
 
@@ -210,6 +211,7 @@ def with_key(
     :param col: Column name
     :param spc_df: Optional species DataFrame, for using unique species IDs
     :param cross_sort: Whether to sort the reaction direction
+    :param stereo: Whether to include stereochemistry
     :return: A reactions DataFrame with this key as a new column
     """
     rct_col0 = Reaction.reactants
@@ -220,7 +222,7 @@ def with_key(
     # If requested, use species keys instead of names
     if spc_df is not None:
         id_col = col_.temp()
-        spc_df = spec_table.with_key(spc_df, id_col)
+        spc_df = spec_table.with_key(spc_df, id_col, stereo=stereo)
         rxn_df = translate_reagents(
             rxn_df,
             spc_df[Species.name],

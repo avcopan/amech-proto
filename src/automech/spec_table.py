@@ -121,9 +121,7 @@ def add_missing_species_by_id(
 
 # add columns
 def with_key(
-    spc_df: polars.DataFrame,
-    col: str = "key",
-    key_col_: str | Sequence[str] = ID_COLS,
+    spc_df: polars.DataFrame, col: str = "key", stereo: bool = True
 ) -> polars.DataFrame:
     """Add a key for identifying unique species.
 
@@ -131,9 +129,20 @@ def with_key(
 
     :param spc_df: Species DataFrame
     :param col: Column name, defaults to "key"
+    :param stereo: Whether to include stereochemistry
     :return: Species DataFrame
     """
-    return df_.with_concat_string_column(spc_df, col_out=col, col_=key_col_)
+    id_cols = ID_COLS
+
+    tmp_col = col_.temp()
+    if not stereo:
+        spc_df = df_.map_(spc_df, Species.amchi, tmp_col, automol.amchi.without_stereo)
+        id_cols = (tmp_col, *id_cols[1:])
+
+    spc_df = df_.with_concat_string_column(spc_df, col_out=col, col_=id_cols)
+    if not stereo:
+        spc_df = spc_df.drop(tmp_col)
+    return spc_df
 
 
 # tranform

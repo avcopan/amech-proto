@@ -806,7 +806,9 @@ def with_rates(mech: Mechanism) -> Mechanism:
     return set_reactions(mech, reac_table.with_rates(rxn_df))
 
 
-def with_key(mech: Mechanism, col: str = "key") -> tuple[Mechanism, Mechanism]:
+def with_key(
+    mech: Mechanism, col: str = "key", stereo: bool = True
+) -> tuple[Mechanism, Mechanism]:
     """Add match key column for species and reactions.
 
     Currently only accepts a single species key, but could be generalized to accept
@@ -815,10 +817,11 @@ def with_key(mech: Mechanism, col: str = "key") -> tuple[Mechanism, Mechanism]:
     :param mech1: First mechanism
     :param spc_key: Species ID column for comparison
     :param col: Output column identifying common species and reactions
+    :param stereo: Whether to include stereochemistry
     :return: First and second Mechanisms with intersection columns
     """
-    spc_df = spec_table.with_key(species(mech), col=col)
-    rxn_df = reac_table.with_key(reactions(mech), col, spc_df=spc_df)
+    spc_df = spec_table.with_key(species(mech), col=col, stereo=stereo)
+    rxn_df = reac_table.with_key(reactions(mech), col, spc_df=spc_df, stereo=stereo)
     return update_data(mech, rxn_df=rxn_df, spc_df=spc_df)
 
 
@@ -973,19 +976,18 @@ def _expand_species_stereo(
 
 # binary operations
 def intersection(
-    mech1: Mechanism,
-    mech2: Mechanism,
-    right: bool = False,
+    mech1: Mechanism, mech2: Mechanism, right: bool = False, stereo: bool = True
 ) -> tuple[Mechanism, Mechanism]:
     """Determine intersection between one mechanism and another.
 
     :param mech1: First mechanism
     :param mech2: Second mechanism
     :param right: Whether to return data from `mech2` instead of `mech1`
+    :param stereo: Whether to consider stereochemistry
     :return: Mechanism intersection
     """
     tmp_col = col_.temp()
-    mech1, mech2 = with_intersection_columns(mech1, mech2, col=tmp_col)
+    mech1, mech2 = with_intersection_columns(mech1, mech2, col=tmp_col, stereo=stereo)
     mech = mech2 if right else mech1
     rxn_df = reactions(mech).filter(polars.col(tmp_col)).drop(tmp_col)
     spc_df = species(mech).filter(polars.col(tmp_col)).drop(tmp_col)
@@ -997,6 +999,7 @@ def difference(
     mech2: Mechanism,
     right: bool = False,
     col: str = "intersection",
+    stereo: bool = True,
 ) -> tuple[Mechanism, Mechanism]:
     """Determine difference between one mechanism and another.
 
@@ -1007,9 +1010,10 @@ def difference(
     :param mech2: Second mechanism
     :param right: Whether to return data from `mech2` instead of `mech1`
     :param col: Output column identifying common species and reactions
+    :param stereo: Whether to consider stereochemistry
     :return: Mechanism difference
     """
-    mech1, mech2 = with_intersection_columns(mech1, mech2, col=col)
+    mech1, mech2 = with_intersection_columns(mech1, mech2, col=col, stereo=stereo)
     mech = mech2 if right else mech1
     rxn_df = reactions(mech).filter(~polars.col(col)).drop(col)
     # Retain species that are needed to balance reactions
@@ -1081,20 +1085,19 @@ def left_update(
 
 
 def with_intersection_columns(
-    mech1: Mechanism,
-    mech2: Mechanism,
-    col: str = "intersection",
+    mech1: Mechanism, mech2: Mechanism, col: str = "intersection", stereo: bool = True
 ) -> tuple[Mechanism, Mechanism]:
     """Add columns to Mechanism pair indicating their intersection.
 
     :param mech1: First mechanism
     :param mech2: Second mechanism
     :param col: Output column identifying common species and reactions
+    :param stereo: Whether to consider stereochemistry
     :return: First and second Mechanisms with intersection columns
     """
     tmp_col = col_.temp()
-    mech1 = with_key(mech1, col=tmp_col)
-    mech2 = with_key(mech2, col=tmp_col)
+    mech1 = with_key(mech1, col=tmp_col, stereo=stereo)
+    mech2 = with_key(mech2, col=tmp_col, stereo=stereo)
 
     # Determine species intersection
     spc_df1, spc_df2 = map(species, (mech1, mech2))

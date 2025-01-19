@@ -103,6 +103,19 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
     # Generate reaction objects
     # (Eventually, we should have a function like _mech.with_reaction_objects(mech))
     rxn_df = reac_table.with_rates(_mech.reactions(mech))
+
+    # Generate the header
+    rate_units = _mech.rate_units(mech)
+    if rate_units is None:
+        header = None
+    else:
+        e_unit, a_unit = rate_units
+        header = f"   {e_unit}   {a_unit}"
+
+    if rxn_df.is_empty():
+        return block(KeyWord.REACTIONS, "", header=header, frame=frame)
+
+    # Format rate data
     cols = [
         Reaction.reactants,
         Reaction.products,
@@ -144,14 +157,6 @@ def reactions_block(mech: Mechanism, frame: bool = True) -> str:
             reac.chemkin_string(o, dup=d, eq_width=eq_width)
             for o, d in rxn_df.select("obj", "dup").rows()
         ]
-
-    # Generate the header
-    rate_units = _mech.rate_units(mech)
-    if rate_units is None:
-        header = None
-    else:
-        e_unit, a_unit = rate_units
-        header = f"   {e_unit}   {a_unit}"
 
     return block(KeyWord.REACTIONS, rxn_strs, header=header, frame=frame)
 
