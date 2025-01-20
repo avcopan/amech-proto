@@ -307,6 +307,11 @@ def reaction_table(
     df = df.filter(~check_expr)
     df = df.drop(check_cols)
 
+    if ReactionRate.colliders in df:
+        df = df.with_columns(
+            polars.col(ReactionRate.colliders).fill_null(polars.lit({"M": None}))
+        )
+
     for model in model_:
         df = model.validate(df)
 
